@@ -2,6 +2,15 @@
   + git add .
   + git commit -m '2021-08-11:description'(年月日：描述信息)
   + git push origin branch-name(分支名字)
+* git clone后需要添加的文件夹:
+  + dataset: 存放数据集
+  + output: 存放任务输出
+  + pretrained_model: 存放预训练语言模型或者预训练词向量
+* 模块描述
+  + base: 存放最底层的任务配置类、任务定义类、指标计算类、基础工具类等
+  + config: 存放自定义任务的配置文件
+  + module: 存放中层功能模块（待修改）
+  + run_task.py: 自定义任务的入口文件
 * 代码规范
 ** 文件规范
    + 文件夹添加__init__.py文件，构成模块
@@ -20,7 +29,7 @@
 
      - @param1: xxxxxx描述该入参
      - @param2: xxxxxx描述该入参
-     """
+     - """
 ** 函数规范
    + 函数请注明入参和返回值以及函数功能描述信息
      - """xxx func information.(摘要)

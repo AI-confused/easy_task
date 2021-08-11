@@ -6,6 +6,11 @@ __pycache__/
 # C extensions
 *.so
 
+# custom
+dataset/
+pretrained_model/
+output/
+
 # Distribution / packaging
 .Python
 build/

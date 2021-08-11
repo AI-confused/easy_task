@@ -1,0 +1,29 @@
+##-*- coding: utf-8 -*-
+# AUTHOR: Li Yun Liang
+# DATE: 21-7-27
+
+# task setting parameters
+data_dir: '/home/work/gitlab/thesis_revises/dataset/metaphor/'
+exp_dir: '/home/work/gitlab/thesis_revises/output'
+task_name: 'classification_metaphor'
+skip_train: False
+bert_model: '/home/work/gitlab/thesis_revises/pretrained_model/chinese_wwm_ext_pytorch'
+train_file_name: 'train.json'
+dev_file_name: 'dev.json'
+test_file_name: 'test.json'
+num_label: 2
+max_seq_len: 160
+train_batch_size: 32
+eval_batch_size: 256
+learning_rate: 1e-6
+num_train_epochs: 5
+warmup_proportion: 0.1
+no_cuda: False
+seed: 99
+gradient_accumulation_steps: 1
+over_write_cache: False
+resume_latest_cpt: False
+optimize_on_cpu: False
+# save_cpt_flag value: {0: only save best model; 1: save best model & last epoch model; 2: save best model & each epoch model}
+save_cpt_flag: 2
+percent: 0.1

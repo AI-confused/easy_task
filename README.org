@@ -1,2 +1,45 @@
-# thesis_revises
+* git更新代码规范:
+  + git add .
+  + git commit -m '2021-08-11:description'(年月日：描述信息)
+  + git push origin branch-name(分支名字)
+* 代码规范
+** 文件规范
+   + .py文件最上面请注明作者信息：
+     """
+     @author: XXX
+     @time: 2021-08-11
+     @description: 文件主要的功能
+     """
+   + import部分先导入外部包，再导入仓库内部模块
+** 类规范
+   + 类请注明描述信息以及参数、使用方法
+     """xxx class information.(摘要)
+     
+     xxxxxx描述该类的作用
 
+     @param1: xxxxxx描述该入参
+     @param2: xxxxxx描述该入参
+     """
+** 函数规范
+   + 函数请注明入参和返回值以及函数功能描述信息
+     """xxx func information.(摘要)
+
+     xxxxxx描述该函数
+
+     @param1: 
+     @param2:
+     @return: 返回值的含义
+   + 函数编写规则
+     入参添加类型，返回值添加类型，无返回值请写None
+     def func(param1: str, param2: int) -> int:
+** 变量规范
+   + 类名
+     大写驼峰法：UserInformation
+   + 函数名
+     小写单词加下划线：get_user_information()
+   + 变量名
+     小写单词加下划线: user_name
+   + 常量名
+     大写字母，单词之间以下划线分开: MAX_COLUMN = 8
+** 内部代码规范
+   + 内部功能代码不要贴在一起写，尽量一个功能一个函数，函数内部每个小模块分开，且用#添加注释

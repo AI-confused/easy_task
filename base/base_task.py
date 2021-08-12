@@ -1,63 +1,34 @@
-# -*- coding: utf-8 -*-
-# AUTHOR: Li Yun Liang
-# DATE: 21-7-9
+"""
+-*- coding: utf-8 -*-
+@author: LiYunLiang
+@time: 2021-07-09
+@description: base module of task definition.
+"""
+
 
 import logging
 import random
 import os
 import json
-import sys
 import numpy as np
-from datetime import datetime
 import torch
+import tqdm
+from datetime import datetime
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
-import torch.distributed as dist
 import torch.nn.parallel as para
-import tqdm
 from .base_utils import *
 from .base_result import *
-
-
-# def set_optimizer_params_grad(named_params_optimizer, named_params_model, test_nan=False):
-#     """
-#         Utility function for optimize_on_cpu and 16-bits training.
-#         Copy the gradient of the GPU parameters to the CPU/RAMM copy of the model
-#     """
-#     is_nan = False
-#     for (name_opti, param_opti), (name_model, param_model) in zip(named_params_optimizer, named_params_model):
-#         if name_opti != name_model:
-#             logger.error("name_opti != name_model: {} {}".format(name_opti, name_model))
-#             raise ValueError
-#         if param_model.grad is not None:
-#             if test_nan and torch.isnan(param_model.grad).sum() > 0:
-#                 is_nan = True
-#             if param_opti.grad is None:
-#                 param_opti.grad = torch.nn.Parameter(param_opti.data.new().resize_(*param_opti.data.size()))
-#             param_opti.grad.data.copy_(param_model.grad.data)
-#         else:
-#             param_opti.grad = None
-#     return is_nan
-
-
-# def copy_optimizer_params_to_model(named_params_model, named_params_optimizer):
-#     """
-#         Utility function for optimize_on_cpu and 16-bits training.
-#         Copy the parameters optimized on CPU/RAM back to the model on GPU
-#     """
-#     for (name_opti, param_opti), (name_model, param_model) in zip(named_params_optimizer, named_params_model):
-#         if name_opti != name_model:
-#             logger.error("name_opti != name_model: {} {}".format(name_opti, name_model))
-#             raise ValueError
-#         param_model.data.copy_(param_opti.data)
+from .base_setting import *
 
 
 class BasePytorchTask(object):
-    def __init__(self, setting):
-        """
-        Basic task to support deep learning models on Pytorch
-        Args:
-            setting (class DEETaskSetting): hyperparameters of PytorchTask.
+    def __init__(self, setting: TaskSetting):
+        """Basic task to support deep learning models on Pytorch.
+
+        Custom pytorch task should inherit this class and input task_setting.
+
+        @setting: hyperparameters of Pytorch Task.
         """
         self.setting = setting
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -87,10 +58,7 @@ class BasePytorchTask(object):
 
 
     def __check_setting_validity(self):
-        """
-        check task setting parameters are valid or not.
-        Args:
-            /
+        """Check task setting parameters are valid or not.
         """
         self.logger.info('='*20 + 'Check Setting Validity' + '='*20)
         self.logger.info('Setting: {}'.format(
@@ -107,10 +75,7 @@ class BasePytorchTask(object):
         
 
     def __init_device(self):
-        """
-        init device
-        Args:
-            /
+        """Init device
         """
         self.logger.info('='*20 + 'Init Device' + '='*20)
         
@@ -120,15 +85,14 @@ class BasePytorchTask(object):
         self.logger.info("device {} / n_gpu {}".format(self.device, self.n_gpu))
 
 
-    def _load_data(self, load_example_func, convert_feature_func, load_train, load_dev, load_test, **kwargs):
-        """
-        Load dataset and construct model's examples, features and dataset.
-        Args:
-            load_example_func(func): read_examples
-            convert_feature_func(func): convert_examples_to_features
-            load_train(bool): load train portion or not
-            load_dev(bool): load dev portion or not
-            load_test(bool): load test portion or not
+    def load_data(self, load_example_func: function, convert_feature_func :function, load_train: bool, load_dev: bool, load_test: bool, **kwargs):
+        """Load dataset and construct model's examples, features and dataset.
+
+        @load_example_func: read_examples
+        @convert_feature_func: convert_examples_to_features
+        @load_train: load train portion or not
+        @load_dev: load dev portion or not
+        @load_test: load test portion or not
         """
         self.logger.info('='*20 + 'load dataset' + '='*20)
         #load train portion
@@ -157,35 +121,12 @@ class BasePytorchTask(object):
             self.logger.info('test examples: {}, features: {} at max_sequence_len: {}'.format(len(self.test_examples), len(self.test_features), self.setting.max_seq_len))
         else:
             self.logger.info('Do not load test portion')
-   
-
-    def load_example_feature_dataset(self, load_example_func, convert_to_feature_func, convert_to_dataset_func,
-                                     file_name=None, file_path=None, only_inference=False):
-        if file_name is None and file_path is None:
-            raise Exception('Either file name or file path should be provided')
-
-        if file_path is None:
-            file_path = os.path.join(self.setting.data_dir, file_name)
-
-        if os.path.exists(file_path):
-            self.logger.info('Load example feature dataset from {}'.format(file_path))
-            examples = load_example_func(file_path, self.setting.percent, only_inference)
-            features = convert_to_feature_func(examples)
-            dataset = convert_to_dataset_func(features)
-        else:
-            self.logger.info('Warning: file does not exists, {}'.format(file_path))
-            examples = None
-            features = None
-            dataset = None
-
-        return examples, features, dataset
 
 
-    def _decorate_model(self):
+    def decorate_model(self):
+        """Put model on device.
+        """
         self.logger.info('='*20 + 'Decorate Model' + '='*20)
-
-        # self.model.to(self.device)
-        # self.logger.info('Set model device to {}'.format(str(self.device)))
         
         if self.n_gpu > 1:
             self.model = torch.nn.DataParallel(self.model)
@@ -200,10 +141,7 @@ class BasePytorchTask(object):
 
 
     def get_latest_cpt_epoch(self):
-        """
-        Continue training with the latest epoch from the saved model directory
-        Args:
-            /
+        """Get the latest training epoch model from the saved model directory.
         """
         prev_epochs = []
         for fn in os.listdir(self.setting.model_dir):
@@ -226,11 +164,10 @@ class BasePytorchTask(object):
         return latest_epoch
         
 
-    def reset_random_seed(self, seed=None):
-        """
-        reset random seed during task.
-        Args:
-            seed(int): random seed.
+    def reset_random_seed(self, seed: int=None):
+        """reset random seed during task.
+
+        @seed: random seed.
         """
         if seed is None:
             seed = self.setting.seed
@@ -243,87 +180,26 @@ class BasePytorchTask(object):
         if self.n_gpu > 0:
             torch.cuda.manual_seed_all(seed)
 
-    # def in_multi_cuda_mode(self):
-    #     return self.n_gpu >= 0
 
+    def prepare_data_loader(self, dataset: list, batch_size: int, rand_flag: bool=True, collate_fn: function=None):
+        """Prepare dataloader during task.
 
-    # def _init_summary_writer(self):
-    #     """
-    #     init tensorboard summary writer.
-    #     """
-    #     if self.is_master_node():
-    #         self.logger.info('Init Summary Writer')
-    #         current_time = datetime.now().strftime('%b%d_%H-%M-%S')
-    #         sum_dir = '{}-{}'.format(self.setting.summary_dir_name, current_time)
-    #         # self.summary_writer = SummaryWriter(sum_dir)
-    #         self.logger.info('Writing summary into {}'.format(sum_dir))
-
-    #     if self.in_distributed_mode():
-    #         # TODO: maybe this can be removed
-    #         dist.barrier()
-
-    
-
-    # def _init_bert_optimizer(self):
-    #     self.logger.info('='*20 + 'Init Bert Optimizer' + '='*20)
-    #     self.optimizer, self.num_train_steps, self.model_named_parameters = \
-    #         self.reset_bert_optimizer()
-
-    # def reset_bert_optimizer(self):
-    #     # Prepare optimizer
-    #     if self.setting.fp16:
-    #         model_named_parameters = [(n, param.clone().detach().to('cpu').float().requires_grad_())
-    #                                   for n, param in self.model.named_parameters()]
-    #     elif self.setting.optimize_on_cpu:
-    #         model_named_parameters = [(n, param.clone().detach().to('cpu').requires_grad_())
-    #                                   for n, param in self.model.named_parameters()]
-    #     else:
-    #         model_named_parameters = list(self.model.named_parameters())
-
-    #     no_decay = ['bias', 'gamma', 'beta']
-    #     optimizer_grouped_parameters = [
-    #         {
-    #             'params': [p for n, p in model_named_parameters if n not in no_decay],
-    #             'weight_decay_rate': 0.01
-    #         },
-    #         {
-    #             'params': [p for n, p in model_named_parameters if n in no_decay],
-    #             'weight_decay_rate': 0.0
-    #         }
-    #     ]
-
-    #     num_train_steps = int(len(self.train_examples)
-    #                           / self.setting.train_batch_size
-    #                           / self.setting.gradient_accumulation_steps
-    #                           * self.setting.num_train_epochs)
-
-    #     optimizer = BertAdam(optimizer_grouped_parameters,
-    #                          lr=self.setting.learning_rate,
-    #                          warmup=self.setting.warmup_proportion,
-    #                          t_total=num_train_steps)
-
-    #     return optimizer, num_train_steps, model_named_parameters
-
-    def prepare_data_loader(self, dataset, batch_size, rand_flag=True, collate_fn=None):
-        """
-        prepare data loader
-
-        Args:
-            dataset (list(DEEFeature)): 
-            batch_size (int): 
-            rand_flag (bool): RandomSampler
+        @dataset: list of InputFeature
+        @batch_size: train or eval batch
+        @rand_flag: RandomSampler or not
+        @collate_fun: function of deposing batch data to tensor
         """
         if rand_flag:
             data_sampler = RandomSampler(dataset)
         else:
             data_sampler = SequentialSampler(dataset)
 
-        if collate_fn is not None: # Retro
+        if collate_fn is not None:
             dataloader = DataLoader(dataset,
                                     batch_size=batch_size,
                                     sampler=data_sampler,
                                     collate_fn=collate_fn)
-        else:# D2E
+        else:
             dataloader = DataLoader(dataset,
                                     batch_size=batch_size,
                                     sampler=data_sampler,
@@ -331,31 +207,12 @@ class BasePytorchTask(object):
 
         return dataloader
 
-    # def prepare_dist_data_loader(self, dataset, batch_size, epoch=0):
-    #     # prepare distributed data loader
-    #     data_sampler = DistributedSampler(dataset)
-    #     data_sampler.set_epoch(epoch)
 
-    #     if self.custom_collate_fn is None:
-    #         dataloader = DataLoader(dataset,
-    #                                 batch_size=batch_size,
-    #                                 sampler=data_sampler)
-    #     else:
-    #         dataloader = DataLoader(dataset,
-    #                                 batch_size=batch_size,
-    #                                 sampler=data_sampler,
-    #                                 collate_fn=self.custom_collate_fn)
-    #     return dataloader
-
-    # def get_current_train_batch_size(self):
-    #     if self.in_distributed_mode():
-    #         train_batch_size = max(self.setting.train_batch_size // dist.get_world_size(), 1)
-    #     else:
-    #         train_batch_size = self.setting.train_batch_size
-
-    #     return train_batch_size
-
-    def resume_save_eval_at(self, epoch, batch_size, resume_cpt_flag=False, save_cpt_flag=True):
+    def resume_save_eval_at(self, epoch: int, batch_size: int, resume_cpt_flag: bool=False, save_cpt_flag: bool=True):
+        """Resume checkpoint and do eval.
+        
+        @epoch: 
+        """
         if self.is_master_node() and epoch >= 0:
             self.logger.info('\nPROGRESS: {}\n'.format(epoch / self.setting.num_train_epochs))
 
@@ -560,24 +417,6 @@ class BasePytorchTask(object):
                 raise Exception('Resume optimizer failed, dict.keys = {}'.format(store_dict.keys()))
         else:
             self.logger.info('Do not resume optimizer')
-
-
-# def average_gradients(model):
-#     """ Gradient averaging. """
-#     size = float(dist.get_world_size())
-#     for name, param in model.named_parameters():
-#         try:
-#             dist.all_reduce(param.grad.data, op=dist.reduce_op.SUM)
-#             param.grad.data /= size
-#         except Exception as e:
-#             logger.error('Error when all_reduce parameter {}, size={}, grad_type={}, error message {}'.format(
-#                 name, param.size(), param.grad.data.dtype, repr(e)
-#             ))
-
-
-
-
-
 
 
 

@@ -16,6 +16,7 @@
    + 文件夹添加__init__.py文件，构成模块
    + .py文件最上面请注明作者信息：
      - """
+     - -*- coding: utf-8 -*-
      - @author: XXX
      - @time: 2021-08-11
      - @description: 文件主要的功能
@@ -24,18 +25,18 @@
 ** 类规范
    + 类请注明描述信息以及参数、使用方法
      - """xxx class information.(摘要)
-     
+     - 
      - xxxxxx描述该类的作用
-
+     - 
      - @param1: xxxxxx描述该入参
      - @param2: xxxxxx描述该入参
      - """
 ** 函数规范
    + 函数请注明入参和返回值以及函数功能描述信息
      - """xxx func information.(摘要)
-
+     - 
      - xxxxxx描述该函数
-
+     - 
      - @param1: 
      - @param2:
      - @return: 返回值的含义

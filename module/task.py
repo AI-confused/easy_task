@@ -39,11 +39,11 @@ class CustomTask(BasePytorchTask):
         self.bert_config = BertConfig.from_pretrained(self.setting.bert_model, num_labels=self.setting.num_label)
         self.setting.vocab_size = len(self.tokenizer.vocab)
         self.model = BertForSentenceClassification.from_pretrained(self.setting.bert_model, config=self.bert_config)
-        self._decorate_model()
+        self.decorate_model()
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=float(self.setting.learning_rate))
 
         # load dataset
-        self._load_data(read_examples, convert_examples_to_features, load_train, load_dev, load_test)
+        self.load_data(read_examples, convert_examples_to_features, load_train, load_dev, load_test)
 
         # prepare custom batch convert func
         self.custom_collate_fn_train = train_collate_fn

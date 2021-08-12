@@ -1,16 +1,23 @@
-# -*- coding: utf-8 -*-
-# AUTHOR: Li Yun Liang
-# DATE: 21-7-9
+"""
+-*- coding: utf-8 -*-
+@author: LiYunLiang
+@time: 2021-07-09
+@description: base module of task result calculation.
+"""
 
 import torch
 from sklearn.metrics import *
 
 
 class BaseResult(object):
+    """Base class of store & calculate task result.
+
+    The labels and predicted values of each batch are updated one at a time, 
+    and the result of the whole dataset is finally calculated.
+
+    @task_name: name of custom task.
     """
-    存储并且计算最终答案分数的基础类
-    """
-    def __init__(self, task_name):
+    def __init__(self, task_name: str):
         self.task_name = task_name
         self.label = []
         self.pred = []
@@ -45,12 +52,13 @@ class BaseResult(object):
         return round(roc_auc_score(self.label, self.prob), 4)
 
 
-    def update_batch(self, batch_label, batch_outputs):
-        """
-        update batch data in classification task.
-        Args:
-            batch_label():
-            batch_outputs():
+    def update_batch(self, batch_label: torch.tensor, batch_outputs: torch.tensor):
+        """Update batch data in custom task.
+
+        This function need modify in children class.
+
+        @batch_label: batch labels
+        @batch_outputs: batch predictions
         """
         pass
 

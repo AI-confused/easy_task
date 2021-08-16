@@ -1,6 +1,6 @@
 """
 -*- coding: utf-8 -*-
-@author: LiYunLiang
+@author: black_tears
 @time: 2021-07-09
 @description: base module of task definition.
 """
@@ -13,9 +13,7 @@ import json
 import numpy as np
 import torch
 import tqdm
-from datetime import datetime
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
-from torch.utils.data.distributed import DistributedSampler
 import torch.nn.parallel as para
 from .base_utils import *
 from .base_result import *
@@ -55,10 +53,15 @@ class BasePytorchTask(object):
         self.custom_collate_fn_eval = None
         self.num_train_steps = None
         self.model_named_parameters = None
+        self.best_dev_score = None
+        self.best_test_score = None
+        self.output_result = None
 
 
     def __check_setting_validity(self):
         """Check task setting parameters are valid or not.
+
+        Private class function.
         """
         self.logger.info('='*20 + 'Check Setting Validity' + '='*20)
         self.logger.info('Setting: {}'.format(
@@ -75,7 +78,9 @@ class BasePytorchTask(object):
         
 
     def __init_device(self):
-        """Init device
+        """Init device.
+
+        Private class function.
         """
         self.logger.info('='*20 + 'Init Device' + '='*20)
         
@@ -95,6 +100,7 @@ class BasePytorchTask(object):
         @load_test: load test portion or not
         """
         self.logger.info('='*20 + 'load dataset' + '='*20)
+
         #load train portion
         if load_train:
             self.logger.info('Load train portion')
@@ -140,10 +146,12 @@ class BasePytorchTask(object):
         self.logger.info('Set model device to {}'.format(str(self.device)))
 
 
-    def get_latest_cpt_epoch(self):
+    def get_latest_cpt_epoch(self) -> int:
         """Get the latest training epoch model from the saved model directory.
         """
         prev_epochs = []
+
+        # find checkpoints and sort them by epoch
         for fn in os.listdir(self.setting.model_dir):
             if fn.startswith('{}.cpt'.format(self.setting.task_name)):
                 try:
@@ -165,7 +173,7 @@ class BasePytorchTask(object):
         
 
     def reset_random_seed(self, seed: int=None):
-        """reset random seed during task.
+        """Reset random seed during task.
 
         @seed: random seed.
         """
@@ -186,7 +194,7 @@ class BasePytorchTask(object):
 
         @dataset: list of InputFeature
         @batch_size: train or eval batch
-        @rand_flag: RandomSampler or not
+        @rand_flag: use RandomSampler or not
         @collate_fun: function of deposing batch data to tensor
         """
         if rand_flag:
@@ -208,26 +216,34 @@ class BasePytorchTask(object):
         return dataloader
 
 
-    def resume_save_eval_at(self, epoch: int, batch_size: int, resume_cpt_flag: bool=False, save_cpt_flag: bool=True):
+    def resume_eval_at(self, resume_model_name: str):
         """Resume checkpoint and do eval.
         
-        @epoch: 
+        @resume_model_dir: do test model name
         """
-        if self.is_master_node() and epoch >= 0:
-            self.logger.info('\nPROGRESS: {}\n'.format(epoch / self.setting.num_train_epochs))
+        self.resume_checkpoint(cpt_file_name=resume_model_name, resume_model=True, resume_optimizer=False)
 
-        if resume_cpt_flag:
-            self.resume_checkpoint(cpt_file_name='{}.cpt.{}'.format(self.setting.cpt_file_name, epoch),
-                               resume_model=True, resume_optimizer=True)
+        # init Result class
+        self.result = Result(task_name=self.setting.task_name)
 
-        if self.is_master_node() and save_cpt_flag:
-            self.save_checkpoint(cpt_file_name='{}.cpt.{}'.format(self.setting.cpt_file_name, epoch), epoch=epoch)
+        # do test
+        self.base_eval(0, 'test', self.test_examples, self.test_features, self.test_dataset)
 
-    def set_batch_to_device(self, batch):
-        """
-        put batch data into cuda.
-        Args:
-            batch (list):
+        # calculate result score
+        score = self.result.get_score()
+        self.logger.info(score)
+
+        # write results
+        self.output_result['result'].append('test_score: {}'.format(json.dumps(score, ensure_ascii=False)))
+
+        # write output results
+        self.write_results()
+
+
+    def set_batch_to_device(self, batch: list):
+        """Put batch data into device.
+
+        @batch: batch features on device
         """
         res = []
         for x in batch:
@@ -240,10 +256,9 @@ class BasePytorchTask(object):
 
 
     def base_train(self, **kwargs):
-        """
-        base task train func with a set of parameters.
-        Args:
-            /
+        """Base task train func with a set of parameters.
+        
+        @kwargs: base_epoch_idx
         """
         assert self.model is not None
         if self.num_train_steps is None:
@@ -262,7 +277,7 @@ class BasePytorchTask(object):
 
         # start training
         global_step = 0
-        train_loss = 0
+        self.train_loss = 0
         self.logger.info('start training~')
         for epoch_idx in tqdm.trange(kwargs['base_epoch_idx'], int(self.setting.num_train_epochs), desc="Epoch"):
             self.model.train()
@@ -275,7 +290,8 @@ class BasePytorchTask(object):
                 loss = self.get_loss_on_batch(batch)
 
                 if self.n_gpu > 1:
-                    loss = loss.mean()  # mean() to average on multi-gpu.
+                    # mean() to average on multi-gpu.
+                    loss = loss.mean()  
                 if self.setting.gradient_accumulation_steps > 1:
                     loss = loss / self.setting.gradient_accumulation_steps
 
@@ -284,9 +300,9 @@ class BasePytorchTask(object):
 
                 loss_scalar = loss.item()
                 tr_loss += loss_scalar
-                train_loss = round(tr_loss * self.setting.gradient_accumulation_steps / (nb_tr_steps+1), 4)
-                bar.set_description('loss {}'.format(train_loss))
-                # self.summary_writer.add_scalar('Loss', loss_scalar, global_step=global_step)
+                self.train_loss = round(tr_loss * self.setting.gradient_accumulation_steps / (nb_tr_steps+1), 4)
+                bar.set_description('loss {}'.format(self.train_loss))
+
                 nb_tr_examples += self.setting.train_batch_size
                 nb_tr_steps += 1
                 if (step + 1) % self.setting.gradient_accumulation_steps == 0:
@@ -297,12 +313,14 @@ class BasePytorchTask(object):
             self.eval(epoch_idx + 1)
 
 
-    def base_eval(self, epoch, data_type, eval_examples, eval_features, eval_dataset, **kwargs):
-        """
-        Args: 
-            epoch(int): eval epoch
-            data_type(str): 'dev' or 'test'
-            /
+    def base_eval(self, epoch: int, data_type: str, eval_examples: list, eval_features: list, eval_dataset: list, **kwargs):
+        """Base task eval func with a set of parameters.
+
+        @epoch: eval epoch
+        @data_type: 'dev' or 'test'
+        @eval_examples: list of InputExample
+        @eval_features: list of InputFeature
+        @eval_dataset: list of InputFeature
         """
         assert self.model is not None
         self.logger.info('=' * 20 + 'Start Evaluation/{}'.format(data_type) + '=' * 20)
@@ -328,13 +346,11 @@ class BasePytorchTask(object):
                 self.result.update_batch(batch_outputs=batch_output, batch_labels=batch_label)
 
 
-    def save_checkpoint(self, cpt_file_name=None, epoch=None):
-        """
-        save save_checkpoint file at model path.
+    def save_checkpoint(self, cpt_file_name: str=None, epoch: int=None):
+        """Save save_checkpoint file to model path.
 
-        Args:
-            cpt_file_name (str): saved file name.
-            epoch (int): num of training epoch.
+        @cpt_file_name: saved file name.
+        @epoch: num of saving model epoch.
         """
         self.logger.info('='*20 + 'Dump Checkpoint' + '='*20)
         if cpt_file_name is None:
@@ -346,6 +362,7 @@ class BasePytorchTask(object):
             'setting': self.setting.__dict__,
         }
 
+        # save model parameters
         if self.model:
             if isinstance(self.model, para.DataParallel) or \
                     isinstance(self.model, para.DistributedDataParallel):
@@ -356,6 +373,7 @@ class BasePytorchTask(object):
         else:
             self.logger.info('No model state is dumped', level=logging.WARNING)
 
+        # save optimizer parameters
         if self.optimizer:
             store_dict['optimizer_state'] = self.optimizer.state_dict()
         else:
@@ -367,16 +385,13 @@ class BasePytorchTask(object):
         torch.save(store_dict, cpt_file_path)
 
 
-    def resume_checkpoint(self, cpt_file_name=None, resume_model=True, resume_optimizer=False, strict=False):
-        """
-        load checkpoint from saved file.
-        Args:
-            cpt_file_path (str): saved model path.
-            cpt_file_name (str): saved model file name.
-            resume_model (bool): load model weights.
-            resume_optimizer (bool): load optimizer weights.
-            strict (bool): /
-        Example: /
+    def resume_checkpoint(self, cpt_file_name: str=None, resume_model: bool=True, resume_optimizer: bool=False, strict: bool=False):
+        """Load checkpoint from saved file.
+
+        @cpt_file_name: saved model file name.
+        @resume_model: load model weights.
+        @resume_optimizer: load optimizer weights.
+        @strict: /
         """
         self.logger.info('='*20 + 'Resume Checkpoint' + '='*20)
 
@@ -418,6 +433,17 @@ class BasePytorchTask(object):
         else:
             self.logger.info('Do not resume optimizer')
 
+
+    def write_results(self):
+        """Write results to output file.
+        """
+        result_file = os.path.join(self.setting.output_dir, 'result.json')
+        # add result_type: train or test
+        BaseUtils.add_lines(file_path=result_file, content=[self.output_result['result_type']])
+        # add task configuration
+        BaseUtils.default_dump_json(obj=self.output_result['task_config'], json_file_path=result_file)
+        # add each epoch eval result or test result
+        BaseUtils.add_lines(file_path=result_file, content=self.output_result['result'])
 
 
 

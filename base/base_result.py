@@ -1,9 +1,10 @@
 """
 -*- coding: utf-8 -*-
-@author: LiYunLiang
+@author: black_tears
 @time: 2021-07-09
 @description: base module of task result calculation.
 """
+
 
 import torch
 from sklearn.metrics import *

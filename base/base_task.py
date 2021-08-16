@@ -18,6 +18,7 @@ import torch.nn.parallel as para
 from .base_utils import *
 from .base_result import *
 from .base_setting import *
+from module.function import *
 
 
 class BasePytorchTask(object):
@@ -90,11 +91,11 @@ class BasePytorchTask(object):
         self.logger.info("device {} / n_gpu {}".format(self.device, self.n_gpu))
 
 
-    def load_data(self, load_example_func: function, convert_feature_func :function, load_train: bool, load_dev: bool, load_test: bool, **kwargs):
+    def load_data(self, load_example_func, convert_feature_func, load_train: bool, load_dev: bool, load_test: bool, **kwargs):
         """Load dataset and construct model's examples, features and dataset.
 
-        @load_example_func: read_examples
-        @convert_feature_func: convert_examples_to_features
+        @load_example_func(func): read_examples
+        @convert_feature_func(func): convert_examples_to_features
         @load_train: load train portion or not
         @load_dev: load dev portion or not
         @load_test: load test portion or not
@@ -189,13 +190,13 @@ class BasePytorchTask(object):
             torch.cuda.manual_seed_all(seed)
 
 
-    def prepare_data_loader(self, dataset: list, batch_size: int, rand_flag: bool=True, collate_fn: function=None):
+    def prepare_data_loader(self, dataset: list, batch_size: int, rand_flag: bool=True, collate_fn=None):
         """Prepare dataloader during task.
 
         @dataset: list of InputFeature
         @batch_size: train or eval batch
         @rand_flag: use RandomSampler or not
-        @collate_fun: function of deposing batch data to tensor
+        @collate_fun of deposing batch data to tensor
         """
         if rand_flag:
             data_sampler = RandomSampler(dataset)
@@ -437,13 +438,17 @@ class BasePytorchTask(object):
     def write_results(self):
         """Write results to output file.
         """
-        result_file = os.path.join(self.setting.output_dir, 'result.json')
+        result_file = os.path.join(self.setting.output_dir, '{}_result.json'.format(self.output_result['result_type']))
         # add result_type: train or test
-        BaseUtils.add_lines(file_path=result_file, content=[self.output_result['result_type']])
+        BaseUtils.write_lines(file_path=result_file, content=[self.output_result['result_type']], write_type='w')
+        BaseUtils.write_lines(file_path=result_file, content=['*'*40])
         # add task configuration
-        BaseUtils.default_dump_json(obj=self.output_result['task_config'], json_file_path=result_file)
+        for key, value in self.output_result['task_config'].items():
+            BaseUtils.write_lines(file_path=result_file, content=['{}: {}'.format(key, value)])
+        BaseUtils.write_lines(file_path=result_file, content=['*'*40])
         # add each epoch eval result or test result
-        BaseUtils.add_lines(file_path=result_file, content=self.output_result['result'])
+        BaseUtils.write_lines(file_path=result_file, content=self.output_result['result'])
+        self.logger.info('write results to {}'.format(result_file))
 
 
 

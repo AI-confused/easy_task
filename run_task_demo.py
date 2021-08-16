@@ -15,7 +15,7 @@ from module.model import *
 
 if __name__ == '__main__':    
     # init task utils
-    task_utils = BaseUtils()
+    task_utils = BaseUtils(task_config_path='/mnt/data/github/DeepLearningTaskFramework/task_config/config.yml')
 
     # init task setting
     task_setting = TaskSetting(task_utils.task_configuration)
@@ -34,7 +34,7 @@ if __name__ == '__main__':
         task.logger.info('Start evaling')
 
         # you need write testing model name & put it in task_setting.model_dir
-        resume_model_name = ''
+        resume_model_name = '/mnt/data/github/DeepLearningTaskFramework/output/{}/Model/{}.cpt.test.0'.format(task_setting.task_name, task_setting.task_name)
 
         # load checkpoint and do eval
         task.resume_eval_at(resume_model_name)

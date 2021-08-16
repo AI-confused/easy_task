@@ -50,7 +50,7 @@ class CustomTask(BasePytorchTask):
         self.output_result = {'result_type': '', 'task_config': self.setting.__dict__, 'result': []}
 
 
-    def load_examples_features(self, load_example_func: function, convert_feature_func: function, data_type: str, file_name: str, flag: bool) -> tuple:
+    def load_examples_features(self, load_example_func, convert_feature_func, data_type: str, file_name: str, flag: bool) -> tuple:
         """Load examples, features and dataset(custom).
         
         @load_example_func(func): read_examples
@@ -133,20 +133,20 @@ class CustomTask(BasePytorchTask):
             score = self.result.get_score()
             self.logger.info(score)
             
+            # save each epoch result
+            self.output_result['result'].append('data_type: {} - epoch: {} - train_loss: {} - epoch_score: {}'\
+                                                .format(data_type, epoch, self.train_loss, json.dumps(score, ensure_ascii=False)))
+
             # save best model with specific standard(custom)
             if data_type == 'dev' and score['f1_score'] > self.best_dev_score:
                 self.best_dev_score = score['f1_score']
                 self.logger.info('saving best dev model...')
                 self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}'.format(self.setting.task_name, data_type, 0))
-                self.output_result['result'].append('data_type: {} - epoch: {} - train_loss: {} - epoch_score: {}'\
-                                                    .format(data_type, epoch, self.train_loss, json.dumps(score, ensure_ascii=False)))
 
             if data_type == 'test' and score['f1_score'] > self.best_test_score:
                 self.best_test_score = score['f1_score']
                 self.logger.info('saving best test model...')
                 self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}'.format(self.setting.task_name, data_type, 0))
-                self.output_result['result'].append('data_type: {} - epoch: {} - train_loss: {} - epoch_score: {}'\
-                                                    .format(data_type, epoch, self.train_loss, json.dumps(score, ensure_ascii=False)))
                 
             if self.setting.save_cpt_flag == 1:
                 # save last epoch

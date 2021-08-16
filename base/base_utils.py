@@ -47,15 +47,14 @@ class BaseUtils(object):
             fout.write('\n')
 
     @classmethod
-    def add_lines(obj, file_path: str, content: list, encoding: str='utf-8'):
+    def write_lines(obj, file_path: str, content: list, write_type: str='a', encoding: str='utf-8'):
         """Add line to file.
         
         @file_path: /
         @content: list of line
         """
-        with open(file_path, 'a', encoding=encoding) as fout:
+        with open(file_path, write_type, encoding=encoding) as fout:
             for line in content:
-                fout.write('#'*40 + '\n')
                 fout.write(line + '\n')
 
     @classmethod

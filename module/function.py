@@ -95,7 +95,7 @@ class TextDataset(Dataset):
     
     @examples: list of InputFeatures
     """
-    def __init__(self, examples: List):
+    def __init__(self, examples: list):
         self.examples = examples
         
     def __len__(self) -> int:

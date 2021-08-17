@@ -6,16 +6,14 @@
 """
 
 import os
-from base.base_utils import *
-from base.base_setting import *
-from module.task import *
-from module.function import *
-from module.model import *
+from src.easy_task.base.base_setting import TaskSetting
+from src.easy_task.base.base_utils import BaseUtils
+from src.easy_task.module.task import CustomTask
 
 
 if __name__ == '__main__':    
     # init task utils
-    task_utils = BaseUtils(task_config_path='/mnt/data/github/DeepLearningTaskFramework/task_config/config.yml')
+    task_utils = BaseUtils(task_config_path=os.path.join(os.getcwd(), 'task_config/config.yml'))
 
     # init task setting
     task_setting = TaskSetting(task_utils.task_configuration)

@@ -10,10 +10,12 @@ import json
 import torch
 import random
 import tqdm
+import os
+import sys
 from torch.utils.data import Dataset
 from transformers import BertTokenizer
-from base.base_utils import *
-from base.base_result import *
+from src.easy_task.base.base_utils import *
+from src.easy_task.base.base_result import *
 
         
 class BERTChineseCharacterTokenizer(BertTokenizer):

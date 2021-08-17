@@ -7,16 +7,16 @@
 
 
 import os
+import sys
 import torch.optim as optim
 import torch.distributed as dist
 from itertools import product
 import torch
 from transformers import BertConfig
 from tqdm import tqdm
-from base.base_task import *
-from base.base_setting import *
-from base.base_utils import *
-from .model import *
+from src.easy_task.base.base_task import BasePytorchTask
+from src.easy_task.base.base_setting import TaskSetting
+from .model import BertForSequenceClassification
 from .function import *
 
 
@@ -168,6 +168,30 @@ class CustomTask(BasePytorchTask):
                 self.logger.info('saving epoch {} model...'.format(epoch))
                 self.save_checkpoint(cpt_file_name='{}.cpt.{}'.format(self.setting.task_name, epoch))
 
+
+    def resume_eval_at(self, resume_model_name: str):
+        """Resume checkpoint and do eval.
+        
+        @resume_model_dir: do test model name
+        """
+        self.resume_checkpoint(cpt_file_name=resume_model_name, resume_model=True, resume_optimizer=False)
+
+        # init Result class
+        self.result = Result(task_name=self.setting.task_name)
+
+        # do test
+        self.base_eval(0, 'test', self.test_examples, self.test_features, self.test_dataset)
+
+        # calculate result score
+        score = self.result.get_score()
+        self.logger.info(score)
+
+        # write results
+        self.output_result['result'].append('test_score: {}'.format(json.dumps(score, ensure_ascii=False)))
+
+        # write output results
+        self.write_results()
+    
 
     def get_result_on_batch(self, batch: tuple):
         """Return batch output logits during eval model(custom).

@@ -1,9 +1,9 @@
 # task setting parameters
-data_dir: '/mnt/data/github/DeepLearningTaskFramework/dataset/metaphor/'
-exp_dir: '/mnt/data/github/DeepLearningTaskFramework/output'
+data_dir: '/mnt/data/github/easy_task/dataset/metaphor/'
+exp_dir: '/mnt/data/github/easy_task/output'
 task_name: 'classification_metaphor'
 skip_train: False
-bert_model: '/mnt/data/github/DeepLearningTaskFramework/pretrained_model/chinese_wwm_ext_pytorch'
+bert_model: '/mnt/data/github/easy_task/pretrained_model/chinese_wwm_ext_pytorch'
 train_file_name: 'train.json'
 dev_file_name: 'dev.json'
 test_file_name: 'test.json'

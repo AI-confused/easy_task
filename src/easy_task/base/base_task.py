@@ -9,16 +9,15 @@
 import logging
 import random
 import os
+import sys
 import json
 import numpy as np
 import torch
 import tqdm
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 import torch.nn.parallel as para
-from .base_utils import *
-from .base_result import *
-from .base_setting import *
-from module.function import *
+from src.easy_task.base.base_setting import TaskSetting
+from src.easy_task.base.base_utils import BaseUtils
 
 
 class BasePytorchTask(object):
@@ -219,30 +218,6 @@ class BasePytorchTask(object):
                                     collate_fn=self.custom_collate_fn)
 
         return dataloader
-
-
-    def resume_eval_at(self, resume_model_name: str):
-        """Resume checkpoint and do eval.
-        
-        @resume_model_dir: do test model name
-        """
-        self.resume_checkpoint(cpt_file_name=resume_model_name, resume_model=True, resume_optimizer=False)
-
-        # init Result class
-        self.result = Result(task_name=self.setting.task_name)
-
-        # do test
-        self.base_eval(0, 'test', self.test_examples, self.test_features, self.test_dataset)
-
-        # calculate result score
-        score = self.result.get_score()
-        self.logger.info(score)
-
-        # write results
-        self.output_result['result'].append('test_score: {}'.format(json.dumps(score, ensure_ascii=False)))
-
-        # write output results
-        self.write_results()
 
 
     def set_batch_to_device(self, batch: list):

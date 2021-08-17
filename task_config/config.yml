@@ -1,12 +1,15 @@
-##-*- coding: utf-8 -*-
-# AUTHOR: black_tears
-# DATE: 21-7-27
+#"""
+#-*- coding: utf-8 -*-
+#@author: black_tears
+#@time: 2021-07-09
+#@description: task config yml file.
+#"""
 
 # task setting parameters
 data_dir: '/mnt/data/github/DeepLearningTaskFramework/dataset/metaphor/'
 exp_dir: '/mnt/data/github/DeepLearningTaskFramework/output'
 task_name: 'classification_metaphor'
-skip_train: True
+skip_train: False
 bert_model: '/mnt/data/github/DeepLearningTaskFramework/pretrained_model/chinese_wwm_ext_pytorch'
 train_file_name: 'train.json'
 dev_file_name: 'dev.json'
@@ -16,9 +19,11 @@ max_seq_len: 160
 train_batch_size: 32
 eval_batch_size: 256
 learning_rate: 1e-6
-num_train_epochs: 5
+num_train_epochs: 1
 warmup_proportion: 0.1
 no_cuda: False
+# specify the GPU number
+cuda_device: '1'
 seed: 99
 gradient_accumulation_steps: 1
 over_write_cache: False

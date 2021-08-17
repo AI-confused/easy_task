@@ -86,8 +86,12 @@ class BasePytorchTask(object):
         self.logger.info('='*20 + 'Init Device' + '='*20)
         
         # set device
+        os.environ["CUDA_VISIBLE_DEVICES"] = self.setting.cuda_device
         self.device = torch.device("cuda" if torch.cuda.is_available() and not self.setting.no_cuda else "cpu")
-        self.n_gpu = torch.cuda.device_count()
+        if not self.setting.no_cuda:
+            self.n_gpu = torch.cuda.device_count()
+        else:
+            self.n_gpu = 0
         self.logger.info("device {} / n_gpu {}".format(self.device, self.n_gpu))
 
 

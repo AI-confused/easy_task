@@ -1,6 +1,9 @@
-# -*- coding: utf-8 -*-
-# AUTHOR: Li Yun Liang
-# DATE: 21-7-9
+"""
+-*- coding: utf-8 -*-
+@author: black_tears
+@time: 2021-07-09
+@description: custom task file.
+"""
 
 
 import os

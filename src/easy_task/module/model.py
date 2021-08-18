@@ -44,5 +44,5 @@ class BertForSequenceClassification(BertPreTrainedModel):
             BIO_loss = nn.CrossEntropyLoss(ignore_index=-1)(BIO_logits.view(-1, self.num_labels), BIO_labels.view(-1))
             outputs = BIO_loss
         else:
-            outputs = BIO_logits
+            outputs = nn.Softmax(dim=1)(BIO_logits)
         return outputs

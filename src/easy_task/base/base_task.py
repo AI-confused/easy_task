@@ -8,16 +8,16 @@
 
 import logging
 import random
+from datetime import datetime
 import os
-import sys
+import abc
 import json
 import numpy as np
 import torch
 import tqdm
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 import torch.nn.parallel as para
-from src.easy_task.base.base_setting import TaskSetting
-from src.easy_task.base.base_utils import BaseUtils
+from base.base_setting import TaskSetting
 
 
 class BasePytorchTask(object):
@@ -29,15 +29,14 @@ class BasePytorchTask(object):
         @setting: hyperparameters of Pytorch Task.
         """
         self.setting = setting
-        self.logger = logging.getLogger(self.__class__.__name__)
-        
+                
         # general initialization
+        self.__set_basic_log_config()
         self.__check_setting_validity()
         self.__init_device()
         self.reset_random_seed()
 
         # task-specific initialization
-        self.custom_collate_fn = None
         self.train_examples = None
         self.train_features = None
         self.train_dataset = None
@@ -47,15 +46,44 @@ class BasePytorchTask(object):
         self.test_examples = None
         self.test_features = None
         self.test_dataset = None
+        self.train_dataloader = None
+        self.eval_dataloader = None
         self.model = None
         self.optimizer = None
-        self.custom_collate_fn_train = None
-        self.custom_collate_fn_eval = None
         self.num_train_steps = None
         self.model_named_parameters = None
         self.best_dev_score = None
         self.best_test_score = None
         self.output_result = None
+
+
+    def __set_basic_log_config(self):
+        """Set basic logger configuration.
+
+        Private class function.
+        """
+        # get now time
+        self.now_time = datetime.now().strftime("%Y-%m-%d|%H:%M:%S")
+
+        # set logging format
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(name)s - %(funcName)s - %(message)s', 
+                                        datefmt='%Y-%m-%d | %H:%M:%S')
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.setLevel(logging.INFO)
+
+        # output to log file handler
+        file_handler = logging.FileHandler(os.path.join(self.setting.log_dir, 'log-{}.log'.format(self.now_time)))
+        file_handler.setLevel(logging.INFO)
+        file_handler.setFormatter(formatter)
+
+        # output to cmd
+        stream_handler = logging.StreamHandler()
+        stream_handler.setLevel(logging.INFO)
+        stream_handler.setFormatter(formatter)
+
+        # add handler
+        self.logger.addHandler(file_handler)
+        self.logger.addHandler(stream_handler)
 
 
     def __check_setting_validity(self):
@@ -76,7 +104,6 @@ class BasePytorchTask(object):
         self.setting.train_batch_size = int(self.setting.train_batch_size / self.setting.gradient_accumulation_steps)
     
         
-
     def __init_device(self):
         """Init device.
 
@@ -94,57 +121,33 @@ class BasePytorchTask(object):
         self.logger.info("device {} / n_gpu {}".format(self.device, self.n_gpu))
 
 
-    def load_data(self, load_example_func, convert_feature_func, load_train: bool, load_dev: bool, load_test: bool, **kwargs):
-        """Load dataset and construct model's examples, features and dataset.
+    def __set_batch_to_device(self, batch: list):
+        """Put batch data into device.
 
-        @load_example_func(func): read_examples
-        @convert_feature_func(func): convert_examples_to_features
-        @load_train: load train portion or not
-        @load_dev: load dev portion or not
-        @load_test: load test portion or not
+        @batch: batch features on device
         """
-        self.logger.info('='*20 + 'load dataset' + '='*20)
-
-        #load train portion
-        if load_train:
-            self.logger.info('Load train portion')
-            self.train_examples, self.train_features, self.train_dataset = self.load_examples_features(load_example_func, convert_feature_func, 'train', self.setting.train_file_name, 1)
-            self.logger.info('Load train portion done')
-            self.logger.info('training examples: {}, features: {} at max_sequence_len: {}'.format(len(self.train_examples), len(self.train_features), self.setting.max_seq_len))
-        else:
-            self.logger.info('Do not load train portion')
-
-        # load dev portion
-        if load_dev:
-            self.logger.info('Load dev portion')
-            self.dev_examples, self.dev_features, self.dev_dataset = self.load_examples_features(load_example_func, convert_feature_func, 'dev', self.setting.dev_file_name, 0)
-            self.logger.info('Load dev portion done!')
-            self.logger.info('dev examples: {}, features: {} at max_sequence_len: {}'.format(len(self.dev_examples), len(self.dev_features), self.setting.max_seq_len))
-        else:
-            self.logger.info('Do not load dev portion')
-
-        # load test portion
-        if load_test:
-            self.logger.info('Load test portion')
-            self.test_examples, self.test_features, self.test_dataset = self.load_examples_features(load_example_func, convert_feature_func, 'test', self.setting.test_file_name, 0)
-            self.logger.info('Load test portion done!')
-            self.logger.info('test examples: {}, features: {} at max_sequence_len: {}'.format(len(self.test_examples), len(self.test_features), self.setting.max_seq_len))
-        else:
-            self.logger.info('Do not load test portion')
+        res = []
+        for x in batch:
+            if isinstance(x, torch.Tensor):
+                x = x.to(self.device)
+                res.append(x)
+            else:
+                res.append(x)
+        return res
 
 
-    def decorate_model(self):
+    def _decorate_model(self):
         """Put model on device.
         """
         self.logger.info('='*20 + 'Decorate Model' + '='*20)
         
         if self.n_gpu > 1:
             self.model = torch.nn.DataParallel(self.model)
-            self.logger.info('Multi-gpu training')
+            self.logger.info('Multi-gpu task')
         elif self.n_gpu == 1:
-            self.logger.info('Single-gpu training')
+            self.logger.info('Single-gpu task')
         else:
-            self.logger.info('no cuda training')
+            self.logger.info('no cuda task')
         
         self.model.to(self.device)
         self.logger.info('Set model device to {}'.format(str(self.device)))
@@ -193,7 +196,7 @@ class BasePytorchTask(object):
             torch.cuda.manual_seed_all(seed)
 
 
-    def prepare_data_loader(self, dataset: list, batch_size: int, rand_flag: bool=True, collate_fn=None):
+    def _prepare_data_loader(self, dataset: list, batch_size: int, rand_flag: bool=True, collate_fn=None):
         """Prepare dataloader during task.
 
         @dataset: list of InputFeature
@@ -211,32 +214,71 @@ class BasePytorchTask(object):
                                     batch_size=batch_size,
                                     sampler=data_sampler,
                                     collate_fn=collate_fn)
-        else:
-            dataloader = DataLoader(dataset,
-                                    batch_size=batch_size,
-                                    sampler=data_sampler,
-                                    collate_fn=self.custom_collate_fn)
 
         return dataloader
 
 
-    def set_batch_to_device(self, batch: list):
-        """Put batch data into device.
+    def load_data(self, load_train: bool, load_dev: bool, load_test: bool, **kwargs):
+        """Load dataset and construct model's examples, features and dataset.
 
-        @batch: batch features on device
+        @load_train: load train portion or not
+        @load_dev: load dev portion or not
+        @load_test: load test portion or not
         """
-        res = []
-        for x in batch:
-            if isinstance(x, torch.Tensor):
-                x = x.to(self.device)
-                res.append(x)
-            else:
-                res.append(x)
-        return res
+        self.logger.info('='*20 + 'load dataset' + '='*20)
+
+        #load train portion
+        if load_train:
+            self.logger.info('Load train portion')
+            self.train_examples, self.train_features, self.train_dataset = self.load_examples_features('train', self.setting.train_file_name, 1)
+            self.logger.info('Load train portion done')
+            self.logger.info('training examples: {}, features: {} at max_sequence_len: {}'.format(len(self.train_examples), len(self.train_features), self.setting.max_seq_len))
+        else:
+            self.logger.info('Do not load train portion')
+
+        # load dev portion
+        if load_dev:
+            self.logger.info('Load dev portion')
+            self.dev_examples, self.dev_features, self.dev_dataset = self.load_examples_features('dev', self.setting.dev_file_name, 0)
+            self.logger.info('Load dev portion done!')
+            self.logger.info('dev examples: {}, features: {} at max_sequence_len: {}'.format(len(self.dev_examples), len(self.dev_features), self.setting.max_seq_len))
+        else:
+            self.logger.info('Do not load dev portion')
+
+        # load test portion
+        if load_test:
+            self.logger.info('Load test portion')
+            self.test_examples, self.test_features, self.test_dataset = self.load_examples_features('test', self.setting.test_file_name, 0)
+            self.logger.info('Load test portion done!')
+            self.logger.info('test examples: {}, features: {} at max_sequence_len: {}'.format(len(self.test_examples), len(self.test_features), self.setting.max_seq_len))
+        else:
+            self.logger.info('Do not load test portion')    
 
 
-    def base_train(self, **kwargs):
+    def custom_collate_fn_train(self, examples: list) -> list:
+        """Convert batch training examples into batch tensor.
+
+        Should be writen by inherit class.
+
+        @examples(InputFeature): /
+        """
+        pass
+
+
+    def custom_collate_fn_eval(self, examples: list) -> list:
+        """Convert batch eval examples into batch tensor.
+
+        Should be writen by inherit class.
+
+        @examples(InputFeature): /
+        """
+        pass
+
+
+    def _base_train(self, **kwargs):
         """Base task train func with a set of parameters.
+
+        This class should not be rewriten.
         
         @kwargs: base_epoch_idx
         """
@@ -248,25 +290,20 @@ class BasePytorchTask(object):
         self.logger.info("\tTotal examples Num = {}".format(len(self.train_examples)))
         self.logger.info("\tTotal features Num = {}".format(len(self.train_features)))
         self.logger.info("\tBatch size = {}".format(self.setting.train_batch_size))
-        self.logger.info("\tNum steps = {}".format(self.num_train_steps))
-
-        # prepare data loader
-        train_dataloader = self.prepare_data_loader(
-            self.train_dataset, self.setting.train_batch_size, rand_flag=True, collate_fn=self.custom_collate_fn_train
-        )        
+        self.logger.info("\tNum steps = {}".format(self.num_train_steps))     
 
         # start training
         global_step = 0
         self.train_loss = 0
-        self.logger.info('start training~')
+
         for epoch_idx in tqdm.trange(kwargs['base_epoch_idx'], int(self.setting.num_train_epochs), desc="Epoch"):
             self.model.train()
             tr_loss = 0
             nb_tr_examples, nb_tr_steps = 0, 0
 
-            bar = tqdm.tqdm(train_dataloader)
+            bar = tqdm.tqdm(self.train_dataloader)
             for step, batch in enumerate(bar):
-                batch = self.set_batch_to_device(batch)
+                batch = self.__set_batch_to_device(batch)
                 loss = self.get_loss_on_batch(batch)
 
                 if self.n_gpu > 1:
@@ -293,14 +330,15 @@ class BasePytorchTask(object):
             self.eval(epoch_idx + 1)
 
 
-    def base_eval(self, epoch: int, data_type: str, eval_examples: list, eval_features: list, eval_dataset: list, **kwargs):
+    def _base_eval(self, epoch: int, data_type: str, eval_examples: list, eval_features: list, **kwargs):
         """Base task eval func with a set of parameters.
+
+        This class should not be rewriten.
 
         @epoch: eval epoch
         @data_type: 'dev' or 'test'
         @eval_examples: list of InputExample
         @eval_features: list of InputFeature
-        @eval_dataset: list of InputFeature
         """
         assert self.model is not None
         self.logger.info('=' * 20 + 'Start Evaluation/{}'.format(data_type) + '=' * 20)
@@ -309,17 +347,12 @@ class BasePytorchTask(object):
         self.logger.info("\tNum features = {}".format(len(eval_features)))
         self.logger.info("\tBatch size = {}".format(self.setting.eval_batch_size))
 
-        # prepare data loader
-        eval_dataloader = self.prepare_data_loader(
-            eval_dataset, self.setting.eval_batch_size, rand_flag=False, collate_fn=self.custom_collate_fn_eval
-        )
-
         # enter eval mode
         self.model.eval()
 
         # do eval
-        for batch in tqdm.tqdm(eval_dataloader, desc='Iteration'):
-            batch = self.set_batch_to_device(batch)
+        for batch in tqdm.tqdm(self.eval_dataloader, desc='Iteration'):
+            batch = self.__set_batch_to_device(batch)
 
             with torch.no_grad():
                 batch_output, batch_label = self.get_result_on_batch(batch)
@@ -383,8 +416,8 @@ class BasePytorchTask(object):
         if os.path.exists(cpt_file_path):
             self.logger.info('Resume checkpoint from {}'.format(cpt_file_path))
         else:
-            self.logger.info('Checkpoint does not exist, {}'.format(cpt_file_path), level=logging.WARNING)
-            return
+            self.logger.warning('Checkpoint {} does not exist'.format(cpt_file_path))
+            raise Exception('Resume checkpoint failed')
 
         if torch.cuda.device_count() == 0:
             store_dict = torch.load(cpt_file_path, map_location='cpu')
@@ -414,20 +447,73 @@ class BasePytorchTask(object):
             self.logger.info('Do not resume optimizer')
 
 
-    def write_results(self):
-        """Write results to output file.
+    @abc.abstractclassmethod
+    def prepare_task_model(self):
+        """Prepare classification task model.
+
+        Must be writen by inherit class.
         """
-        result_file = os.path.join(self.setting.output_dir, '{}_result.json'.format(self.output_result['result_type']))
-        # add result_type: train or test
-        BaseUtils.write_lines(file_path=result_file, content=[self.output_result['result_type']], write_type='w')
-        BaseUtils.write_lines(file_path=result_file, content=['*'*40])
-        # add task configuration
-        for key, value in self.output_result['task_config'].items():
-            BaseUtils.write_lines(file_path=result_file, content=['{}: {}'.format(key, value)])
-        BaseUtils.write_lines(file_path=result_file, content=['*'*40])
-        # add each epoch eval result or test result
-        BaseUtils.write_lines(file_path=result_file, content=self.output_result['result'])
-        self.logger.info('write results to {}'.format(result_file))
+        pass
 
 
+    @abc.abstractclassmethod
+    def write_results(self, **kwargs):
+        """Write results to output file.
 
+        Must be writen by inherit class.
+        """
+        pass
+
+    
+    @abc.abstractclassmethod
+    def get_loss_on_batch(self, **kwargs):
+        """Return batch loss during training model.
+
+        Must be writen by inherit class.
+        """
+        pass
+
+
+    @abc.abstractclassmethod
+    def get_result_on_batch(self, **kwargs):
+        """Return batch output logits during eval model.
+
+        Must be writen by inherit class.
+        """
+        pass
+
+
+    @abc.abstractclassmethod
+    def resume_eval_at(self, **kwargs):
+        """Resume checkpoint and do eval.
+
+        Must be writen by inherit class.
+        """
+        pass
+
+
+    @abc.abstractclassmethod
+    def load_examples_features(self, data_type: str, file_name: str, flag: bool) -> tuple:
+        """Load examples, features and dataset.
+        
+        Must be writen by inherit class.
+        """
+        pass
+
+    
+    @abc.abstractclassmethod
+    def read_examples(self, **kwargs) -> list:
+        """Read data from a data file and generate list of InputExamples.
+
+        Must be writen by inherit class.
+        """
+        pass
+
+
+    @abc.abstractclassmethod
+    def convert_examples_to_features(self, **kwargs) -> list:
+        """Process the InputExamples into InputFeatures that can be fed into the model.
+
+        Must be writen by inherit class.
+        """
+        pass

@@ -7,20 +7,17 @@
 
 
 import os
-import sys
-import torch.optim as optim
-import torch.distributed as dist
-from itertools import product
+import random
+import tqdm
 import torch
 from transformers import BertConfig
-from tqdm import tqdm
-from src.easy_task.base.base_task import BasePytorchTask
-from src.easy_task.base.base_setting import TaskSetting
+from base.base_task import BasePytorchTask
+from base.base_setting import TaskSetting
 from .model import BertForSequenceClassification
-from .function import *
+from .utils import *
 
 
-class CustomTask(BasePytorchTask):
+class ClassificationTask(BasePytorchTask):
     def __init__(self, task_setting: TaskSetting, load_train: bool=True, load_dev: bool=True, load_test: bool=True):
         """Custom Task definition class(custom).
 
@@ -29,23 +26,18 @@ class CustomTask(BasePytorchTask):
         @load_dev: load dev set.
         @load_test: load test set.
         """
-        super(CustomTask, self).__init__(task_setting)
+        super(ClassificationTask, self).__init__(task_setting)
         self.logger.info('Initializing {}'.format(self.__class__.__name__))
 
-        # prepare Model
-        self.tokenizer = BERTChineseCharacterTokenizer.from_pretrained(self.setting.bert_model)
-        self.bert_config = BertConfig.from_pretrained(self.setting.bert_model, num_labels=self.setting.num_label)
-        self.setting.vocab_size = len(self.tokenizer.vocab)
-        self.model = BertForSequenceClassification.from_pretrained(self.setting.bert_model, config=self.bert_config)
-        self.decorate_model()
+        # prepare model
+        self.prepare_task_model()
+        self._decorate_model()
+
+        # prepare optim
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=float(self.setting.learning_rate))
 
         # load dataset
-        self.load_data(read_examples, convert_examples_to_features, load_train, load_dev, load_test)
-
-        # prepare custom batch convert func
-        self.custom_collate_fn_train = train_collate_fn
-        self.custom_collate_fn_eval = eval_collate_fn
+        self.load_data(load_train, load_dev, load_test)
 
         # best score and output result(custom)
         self.best_dev_score = 0.0
@@ -53,11 +45,22 @@ class CustomTask(BasePytorchTask):
         self.output_result = {'result_type': '', 'task_config': self.setting.__dict__, 'result': []}
 
 
-    def load_examples_features(self, load_example_func, convert_feature_func, data_type: str, file_name: str, flag: bool) -> tuple:
+    def prepare_task_model(self):
+        """Prepare classification task model(custom).
+
+        Can be overwriten.
+        """
+        self.tokenizer = BERTChineseCharacterTokenizer.from_pretrained(self.setting.bert_model)
+        self.bert_config = BertConfig.from_pretrained(self.setting.bert_model, num_labels=self.setting.num_label)
+        self.setting.vocab_size = len(self.tokenizer.vocab)
+        self.model = BertForSequenceClassification.from_pretrained(self.setting.bert_model, config=self.bert_config)
+
+
+    def load_examples_features(self, data_type: str, file_name: str, flag: bool) -> tuple:
         """Load examples, features and dataset(custom).
+
+        Can be overwriten, but with the same input parameters and output type.
         
-        @load_example_func(func): read_examples
-        @convert_feature_func(func): convert_examples_to_features
         @data_type: train or dev or test
         @file_name: dataset file name
         @flag: 1 means training, 0 means evaling
@@ -69,11 +72,11 @@ class CustomTask(BasePytorchTask):
             examples = torch.load(cached_features_file0)
             features = torch.load(cached_features_file1)
         else:
-            examples = load_example_func(os.path.join(self.setting.data_dir, file_name), percent=self.setting.percent)
-            features = convert_feature_func(examples,
-                                            tokenizer=self.tokenizer,
-                                            max_seq_len=self.setting.max_seq_len,
-                                            is_training=flag)
+            examples = self.read_examples(os.path.join(self.setting.data_dir, file_name), percent=self.setting.percent)
+            features = self.convert_examples_to_features(examples,
+                                                        tokenizer=self.tokenizer,
+                                                        max_seq_len=self.setting.max_seq_len,
+                                                        is_training=flag)
  
             torch.save(examples, cached_features_file0)
             torch.save(features, cached_features_file1)
@@ -81,8 +84,80 @@ class CustomTask(BasePytorchTask):
         return (examples, features, dataset)
 
 
+    def read_examples(self, input_file: str, percent: float=1.0) -> list:
+        """Read data from a data file and generate list of InputExamples(custom).
+
+        Can be overwriten, but with the same input parameters and output type.
+
+        @input_file: data input file abs dir
+        @percent: percent of reading samples
+        """
+        examples=[]
+        cnt = 10000
+
+        try:
+            data = json.load(open(input_file))['data']
+        except:
+            data = json.load(open(input_file))
+            
+        if percent != 1.0:
+            data = random.sample(data, int(len(data)*percent))
+        for line in data:
+            text = line['text']
+            label = line['label']
+            doc_id = cnt
+            cnt += 1
+            examples.append(InputExample(
+                doc_id=doc_id, 
+                text=text,
+                label=label))
+        return examples
+
+
+    def convert_examples_to_features(self, examples: list, tokenizer: BertTokenizer, max_seq_len: int, **kwargs) -> list:
+        """Process the InputExamples into InputFeatures that can be fed into the model(custom).
+
+        Can be overwriten, but with the same input parameters and output type.
+
+        @examples: list of InputExamples
+        @tokenizer: class BertTokenizer or its inherited classes
+        @max_seq_len: max length of tokenized text
+        """
+        results = []
+        for _ in tqdm.tqdm(range(len(examples)), total=len(examples)):
+            example = examples[_]
+
+            # tokenize
+            sentence_token = tokenizer.tokenize(example.text)[:max_seq_len-2]
+            sentence_len = len(sentence_token)
+            input_token = ['[CLS]'] + sentence_token + ['[SEP]']
+            segment_id = [0] * len(input_token)
+            input_id = tokenizer.convert_tokens_to_ids(input_token)
+            input_mask = [1] * len(input_id)
+
+            # padding
+            padding_length = max_seq_len - len(input_id)
+            input_id += ([0] * padding_length)
+            input_mask += ([0] * padding_length)
+            segment_id += ([0] * padding_length)
+
+            results.append(
+                InputFeature(
+                    doc_id=example.doc_id,
+                    sentence=example.text,
+                    input_tokens=input_token,
+                    input_ids=input_id,
+                    input_masks=input_mask,
+                    segment_ids=segment_id,
+                    sentence_len=sentence_len,
+                    label=example.label
+                )
+            )
+        return results
+
+
     def train(self, resume_base_epoch=None):
-        """Task level train func(custom)
+        """Task level train func.
 
         @resume_base_epoch(int): start training epoch
         """
@@ -102,8 +177,11 @@ class CustomTask(BasePytorchTask):
         else:
             self.logger.info('Training starts from scratch')
 
+        # prepare data loader
+        self.train_dataloader = self._prepare_data_loader(self.train_dataset, self.setting.train_batch_size, rand_flag=True, collate_fn=self.custom_collate_fn_train)
+
         # do base train
-        self.base_train(base_epoch_idx=resume_base_epoch)
+        self._base_train(base_epoch_idx=resume_base_epoch)
 
         # save best score
         self.output_result['result'].append('best_dev_score: {} - best_test_score: {}'.format(self.best_dev_score, self.best_test_score))
@@ -113,11 +191,11 @@ class CustomTask(BasePytorchTask):
 
     
     def eval(self, epoch):
-        """Task level eval func(custom)
+        """Task level eval func.
 
         @epoch(int): eval epoch
         """        
-        for data_type in ['dev', 'test']:
+        for data_type in self.setting.eval_file:
             if data_type == 'test':
                 features = self.test_features
                 examples = self.test_examples
@@ -130,7 +208,10 @@ class CustomTask(BasePytorchTask):
             # init Result class
             self.result = Result(task_name=self.setting.task_name)
 
-            self.base_eval(epoch, data_type, examples, features, dataset)
+            # prepare data loader
+            self.eval_dataloader = self._prepare_data_loader(dataset, self.setting.eval_batch_size, rand_flag=False, collate_fn=self.custom_collate_fn_eval)
+
+            self._base_eval(epoch, data_type, examples, features)
 
             # calculate result score
             score = self.result.get_score()
@@ -141,13 +222,13 @@ class CustomTask(BasePytorchTask):
                                                 .format(data_type, epoch, self.train_loss, json.dumps(score, ensure_ascii=False)))
 
             # save best model with specific standard(custom)
-            if data_type == 'dev' and score['f1_score'] > self.best_dev_score:
-                self.best_dev_score = score['f1_score']
+            if data_type == 'dev' and score['f1_score'][1] > self.best_dev_score:
+                self.best_dev_score = score['f1_score'][1]
                 self.logger.info('saving best dev model...')
                 self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}'.format(self.setting.task_name, data_type, 0))
 
-            if data_type == 'test' and score['f1_score'] > self.best_test_score:
-                self.best_test_score = score['f1_score']
+            if data_type == 'test' and score['f1_score'][1] > self.best_test_score:
+                self.best_test_score = score['f1_score'][1]
                 self.logger.info('saving best test model...')
                 self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}'.format(self.setting.task_name, data_type, 0))
                 
@@ -169,8 +250,40 @@ class CustomTask(BasePytorchTask):
                 self.save_checkpoint(cpt_file_name='{}.cpt.{}'.format(self.setting.task_name, epoch))
 
 
+    def custom_collate_fn_train(self, examples: list) -> list:
+        """Convert batch training examples into batch tensor(custom).
+
+        Can be overwriten, but with the same input parameters and output type.
+
+        @examples(InputFeature): /
+        """
+        input_ids = torch.stack([torch.tensor(example.input_ids, dtype=torch.long) for example in examples],0)
+        input_masks = torch.stack([torch.tensor(example.input_masks, dtype=torch.long) for example in examples],0)
+        segment_ids = torch.stack([torch.tensor(example.segment_ids, dtype=torch.long) for example in examples],0)
+        labels = torch.stack([torch.tensor(example.label, dtype=torch.long) for example in examples],0)
+
+        return [input_ids, input_masks, segment_ids, labels]
+
+
+    def custom_collate_fn_eval(self, examples: list) -> list:
+        """Convert batch eval examples into batch tensor(custom).
+
+        Can be overwriten, but with the same input parameters and output type.
+
+        @examples(InputFeature): /
+        """
+        input_ids = torch.stack([torch.tensor(example.input_ids, dtype=torch.long) for example in examples],0)
+        input_masks = torch.stack([torch.tensor(example.input_masks, dtype=torch.long) for example in examples],0)
+        segment_ids = torch.stack([torch.tensor(example.segment_ids, dtype=torch.long) for example in examples],0)
+        labels = torch.stack([torch.tensor(example.label, dtype=torch.long) for example in examples],0)
+
+        return [input_ids, input_masks, segment_ids, labels]
+
+
     def resume_eval_at(self, resume_model_name: str):
-        """Resume checkpoint and do eval.
+        """Resume checkpoint and do eval(custom).
+
+        Can be overwriten, but with the same input parameters.
         
         @resume_model_dir: do test model name
         """
@@ -179,8 +292,11 @@ class CustomTask(BasePytorchTask):
         # init Result class
         self.result = Result(task_name=self.setting.task_name)
 
+        # prepare data loader
+        self.eval_dataloader = self._prepare_data_loader(self.test_dataset, self.setting.eval_batch_size, rand_flag=False, collate_fn=self.custom_collate_fn_eval)
+
         # do test
-        self.base_eval(0, 'test', self.test_examples, self.test_features, self.test_dataset)
+        self._base_eval(0, 'test', self.test_examples, self.test_features)
 
         # calculate result score
         score = self.result.get_score()
@@ -196,6 +312,8 @@ class CustomTask(BasePytorchTask):
     def get_result_on_batch(self, batch: tuple):
         """Return batch output logits during eval model(custom).
 
+        Can be overwriten, but with the same input parameters and output type.
+
         @batch: /
         """
         input_ids, input_masks, segment_ids, labels = batch
@@ -204,10 +322,33 @@ class CustomTask(BasePytorchTask):
 
 
     def get_loss_on_batch(self, batch):
-        """Return batch loss during training model.
+        """Return batch loss during training model(custom).
+
+        Can be overwriten, but with the same input parameters and output type.
 
         @batch: /
         """
         input_ids, input_masks, segment_ids, labels = batch
         loss = self.model(input_ids=input_ids, token_type_ids=segment_ids, attention_mask=input_masks, labels=labels)
         return loss
+
+
+    def write_results(self):
+        """Write results to output file.
+
+        Can be overwriten.
+        """
+        result_file = os.path.join(self.setting.result_dir, 'result-{}-{}.json'.format(self.now_time, self.output_result['result_type']))
+
+        # add result_type: train or test
+        BaseUtils.write_lines(file_path=result_file, content=[self.output_result['result_type']], write_type='w')
+        BaseUtils.write_lines(file_path=result_file, content=['*'*40])
+
+        # add task configuration
+        for key, value in self.output_result['task_config'].items():
+            BaseUtils.write_lines(file_path=result_file, content=['{}: {}'.format(key, value)])
+        BaseUtils.write_lines(file_path=result_file, content=['*'*40])
+
+        # add each epoch eval result or test result
+        BaseUtils.write_lines(file_path=result_file, content=self.output_result['result'])
+        self.logger.info('write results to {}'.format(result_file))

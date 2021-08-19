@@ -1,9 +1,14 @@
+"""
+-*- coding: utf-8 -*-
+@author: black_tears
+@time: 2021-08-16
+@description: module file.
+"""
 
-# import sys
-# import os
-# root_path = os.getcwd()
-# sys.path.append(root_path)
-# sys.path.append(os.path.join(root_path, 'src/easy_task/'))
-from easy_task.base import base_task, base_result, base_setting, base_utils
-from easy_task.module import function, model, task
+import os
+import sys
+cur_dir = os.path.abspath(__file__)
+sys.path.append('/'.join(cur_dir.split('/')[:-1]))
+from base import base_task, base_result, base_setting, base_utils
+from module import utils, model, task
 

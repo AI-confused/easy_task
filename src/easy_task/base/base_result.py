@@ -29,6 +29,14 @@ class BaseResult(object):
         return round(accuracy_score(self.label, self.pred), 4)
 
     @property
+    def f1_score_0(self):
+        return round(f1_score(self.label, self.pred, pos_label=0), 4)
+
+    @property
+    def f1_score_1(self):
+        return round(f1_score(self.label, self.pred, pos_label=1), 4)
+
+    @property
     def micro_f1_score(self):
         return round(f1_score(self.label, self.pred, average='micro'), 4)
 

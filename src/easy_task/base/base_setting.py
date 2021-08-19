@@ -38,7 +38,12 @@ class TaskSetting(object):
         if not os.path.exists(self.model_dir):
             os.makedirs(self.model_dir, exist_ok=True)
             
-        # create model output dir
-        self.output_dir = os.path.join(self.task_dir, "Output")
-        if not os.path.exists(self.output_dir):
-            os.makedirs(self.output_dir, exist_ok=True)
+        # create model result dir
+        self.result_dir = os.path.join(self.task_dir, "Result")
+        if not os.path.exists(self.result_dir):
+            os.makedirs(self.result_dir, exist_ok=True)
+
+        # create model log dir
+        self.log_dir = os.path.join(self.task_dir, "Log")
+        if not os.path.exists(self.log_dir):
+            os.makedirs(self.log_dir, exist_ok=True)

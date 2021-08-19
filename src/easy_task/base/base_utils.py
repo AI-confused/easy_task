@@ -6,8 +6,10 @@
 """
 
 
+import os
 import json
 import logging
+from datetime import date, datetime
 import pickle
 import yaml
 
@@ -16,9 +18,9 @@ class BaseUtils(object):
     """Base class for task utils.
     """
     def __init__(self, task_config_path):
-        self.__set_basic_log_config()
         with open(task_config_path, 'r', encoding='utf-8') as f:
             self.task_configuration = yaml.load(f.read(), Loader=yaml.FullLoader)
+
 
     @classmethod
     def default_load_json(json_file_path: str, encoding: str='utf-8', **kwargs):
@@ -76,16 +78,6 @@ class BaseUtils(object):
         """
         with open(pkl_file_path, 'wb') as fout:
             pickle.dump(obj, fout, **kwargs)
-
-
-    def __set_basic_log_config(self):
-        """Set basic logger configuration.
-
-        Private class function.
-        """
-        logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
-                            datefmt='%Y-%m-%d %H:%M:%S',
-                            level=logging.INFO)
 
 
 class InputExample(object):

@@ -20,7 +20,7 @@ import torch.nn.parallel as para
 from base.base_setting import TaskSetting
 
 
-class BasePytorchTask(object):
+class BasePytorchTask(metaclass=abc.ABCMeta):
     def __init__(self, setting: TaskSetting):
         """Basic task to support deep learning models on Pytorch.
 

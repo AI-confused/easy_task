@@ -355,8 +355,8 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
             batch = self.__set_batch_to_device(batch)
 
             with torch.no_grad():
-                batch_output, batch_label = self.get_result_on_batch(batch)
-                self.result.update_batch(batch_outputs=batch_output, batch_labels=batch_label)
+                batch_output, batch_label, batch_features = self.get_result_on_batch(batch)
+                self.result.update_batch(batch_outputs=batch_output, batch_labels=batch_label, batch_features=batch_features)
 
 
     def save_checkpoint(self, cpt_file_name: str=None, epoch: int=None):
@@ -514,6 +514,15 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
     def convert_examples_to_features(self, **kwargs) -> list:
         """Process the InputExamples into InputFeatures that can be fed into the model.
 
+        Must be writen by inherit class.
+        """
+        pass
+
+
+    @abc.abstractclassmethod
+    def return_bad_case(self, **kwargs):
+        """Return eval bad case and dump to file.
+        
         Must be writen by inherit class.
         """
         pass

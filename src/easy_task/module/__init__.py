@@ -6,6 +6,6 @@
 """
 
 
-from .utils import *
-from .model import *
-from .task import *
+from .utils_for_cls import *
+from .model_for_cls import *
+from .task_for_cls import *

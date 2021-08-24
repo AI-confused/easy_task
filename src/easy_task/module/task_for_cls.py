@@ -13,8 +13,8 @@ import torch
 from transformers import BertConfig
 from base.base_task import BasePytorchTask
 from base.base_setting import TaskSetting
-from .model import BertForSequenceClassification
-from .utils import *
+from .model_for_cls import BertForSequenceClassification
+from .utils_for_cls import *
 
 
 class ClassificationTask(BasePytorchTask):
@@ -206,7 +206,7 @@ class ClassificationTask(BasePytorchTask):
                 dataset = self.dev_dataset
 
             # init Result class
-            self.result = Result(task_name=self.setting.task_name)
+            self.result = ClassificationResult(task_name=self.setting.task_name)
 
             # prepare data loader
             self.eval_dataloader = self._prepare_data_loader(dataset, self.setting.eval_batch_size, rand_flag=False, collate_fn=self.custom_collate_fn_eval)
@@ -216,6 +216,10 @@ class ClassificationTask(BasePytorchTask):
             # calculate result score
             score = self.result.get_score()
             self.logger.info(score)
+
+            # return bad case in train-mode
+            if self.setting.train_bad_case:
+                self.return_bad_case(data_type=data_type, epoch=epoch)
             
             # save each epoch result
             self.output_result['result'].append('data_type: {} - epoch: {} - train_loss: {} - epoch_score: {}'\
@@ -250,34 +254,34 @@ class ClassificationTask(BasePytorchTask):
                 self.save_checkpoint(cpt_file_name='{}.cpt.{}'.format(self.setting.task_name, epoch))
 
 
-    def custom_collate_fn_train(self, examples: list) -> list:
+    def custom_collate_fn_train(self, features: list) -> list:
         """Convert batch training examples into batch tensor(custom).
 
         Can be overwriten, but with the same input parameters and output type.
 
         @examples(InputFeature): /
         """
-        input_ids = torch.stack([torch.tensor(example.input_ids, dtype=torch.long) for example in examples],0)
-        input_masks = torch.stack([torch.tensor(example.input_masks, dtype=torch.long) for example in examples],0)
-        segment_ids = torch.stack([torch.tensor(example.segment_ids, dtype=torch.long) for example in examples],0)
-        labels = torch.stack([torch.tensor(example.label, dtype=torch.long) for example in examples],0)
+        input_ids = torch.stack([torch.tensor(feature.input_ids, dtype=torch.long) for feature in features], 0)
+        input_masks = torch.stack([torch.tensor(feature.input_masks, dtype=torch.long) for feature in features], 0)
+        segment_ids = torch.stack([torch.tensor(feature.segment_ids, dtype=torch.long) for feature in features], 0)
+        labels = torch.stack([torch.tensor(feature.label, dtype=torch.long) for feature in features], 0)
 
         return [input_ids, input_masks, segment_ids, labels]
 
 
-    def custom_collate_fn_eval(self, examples: list) -> list:
+    def custom_collate_fn_eval(self, features: list) -> list:
         """Convert batch eval examples into batch tensor(custom).
 
         Can be overwriten, but with the same input parameters and output type.
 
         @examples(InputFeature): /
         """
-        input_ids = torch.stack([torch.tensor(example.input_ids, dtype=torch.long) for example in examples],0)
-        input_masks = torch.stack([torch.tensor(example.input_masks, dtype=torch.long) for example in examples],0)
-        segment_ids = torch.stack([torch.tensor(example.segment_ids, dtype=torch.long) for example in examples],0)
-        labels = torch.stack([torch.tensor(example.label, dtype=torch.long) for example in examples],0)
+        input_ids = torch.stack([torch.tensor(feature.input_ids, dtype=torch.long) for feature in features], 0)
+        input_masks = torch.stack([torch.tensor(feature.input_masks, dtype=torch.long) for feature in features], 0)
+        segment_ids = torch.stack([torch.tensor(feature.segment_ids, dtype=torch.long) for feature in features], 0)
+        labels = torch.stack([torch.tensor(feature.label, dtype=torch.long) for feature in features], 0)
 
-        return [input_ids, input_masks, segment_ids, labels]
+        return [input_ids, input_masks, segment_ids, labels, features]
 
 
     def resume_eval_at(self, resume_model_name: str):
@@ -290,7 +294,7 @@ class ClassificationTask(BasePytorchTask):
         self.resume_checkpoint(cpt_file_name=resume_model_name, resume_model=True, resume_optimizer=False)
 
         # init Result class
-        self.result = Result(task_name=self.setting.task_name)
+        self.result = ClassificationResult(task_name=self.setting.task_name)
 
         # prepare data loader
         self.eval_dataloader = self._prepare_data_loader(self.test_dataset, self.setting.eval_batch_size, rand_flag=False, collate_fn=self.custom_collate_fn_eval)
@@ -307,6 +311,10 @@ class ClassificationTask(BasePytorchTask):
 
         # write output results
         self.write_results()
+
+        # write bad case
+        if self.setting.test_bad_case:
+            self.return_bad_case()
     
 
     def get_result_on_batch(self, batch: tuple):
@@ -316,9 +324,9 @@ class ClassificationTask(BasePytorchTask):
 
         @batch: /
         """
-        input_ids, input_masks, segment_ids, labels = batch
+        input_ids, input_masks, segment_ids, labels, features = batch
         logits = self.model(input_ids=input_ids, token_type_ids=segment_ids, attention_mask=input_masks).detach().cpu()
-        return logits, labels
+        return logits, labels, features
 
 
     def get_loss_on_batch(self, batch):
@@ -352,3 +360,25 @@ class ClassificationTask(BasePytorchTask):
         # add each epoch eval result or test result
         BaseUtils.write_lines(file_path=result_file, content=self.output_result['result'])
         self.logger.info('write results to {}'.format(result_file))
+
+        
+    def return_bad_case(self, file_type: str='excel', data_type: str='', epoch=''):
+        """Return eval bad case and dump to file.
+
+        Can be overwriten.
+
+        @file_type: file type of bad case.
+        @data_type: test or dev during train-mode, not used during test-mode.
+        epoch: train epoch during train-mode, not used during test-mode.
+        """
+        dataframe = pd.DataFrame(self.result.bad_case)
+        if file_type == 'excel':
+            bad_case_file = os.path.join(self.setting.result_dir, 'badcase-{}-{}-{}-{}.xlsx'.format(self.now_time, data_type, epoch, self.output_result['result_type']))
+            dataframe.to_excel(bad_case_file, index=False)
+        elif file_type == 'csv':
+            bad_case_file = os.path.join(self.setting.result_dir, 'badcase-{}-{}-{}-{}.csv'.format(self.now_time, data_type, epoch, self.output_result['result_type']))
+            dataframe.to_csv(bad_case_file, index=False)
+        else:
+            raise ValueError('Wrong file_type!')
+
+        self.logger.info('write badcases to {}'.format(bad_case_file))

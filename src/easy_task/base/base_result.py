@@ -6,11 +6,12 @@
 """
 
 
+import abc
 import torch
 from sklearn.metrics import *
 
 
-class BaseResult(object):
+class BaseResult(metaclass=abc.ABCMeta):
     """Base class of store & calculate task result.
 
     The labels and predicted values of each batch are updated one at a time, 
@@ -23,6 +24,7 @@ class BaseResult(object):
         self.label = []
         self.pred = []
         self.prob = []
+        self.bad_case = {'text': [], 'id': [], 'pred': [], 'label': []}
 
     @property
     def accuracy(self):
@@ -61,13 +63,12 @@ class BaseResult(object):
         return round(roc_auc_score(self.label, self.prob), 4)
 
 
-    def update_batch(self, batch_label: torch.tensor, batch_outputs: torch.tensor):
+    @abc.abstractclassmethod
+    def update_batch(self, **kwargs):
         """Update batch data in custom task.
 
-        This function need modify in children class.
-
-        @batch_label: batch labels
-        @batch_outputs: batch predictions
+        This function must be written by inherit class.
         """
         pass
+
 

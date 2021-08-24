@@ -6,6 +6,7 @@
 """
 
 
+import pandas as pd
 import torch
 from torch.utils.data import Dataset
 from transformers import BertTokenizer
@@ -37,17 +38,13 @@ class TextDataset(Dataset):
         return self.examples[index]
 
 
-
-
-
-
-class Result(BaseResult):
+class ClassificationResult(BaseResult):
     """Store and calculate result class(custom), inherit from BaseResult.
 
     @task_name: string of task name
     """
     def __init__(self, task_name: str):
-        super(Result, self).__init__(task_name=task_name)
+        super(ClassificationResult, self).__init__(task_name=task_name)
         
     def get_score(self) -> dict:
         """Calculate task specific score(custom).
@@ -68,12 +65,23 @@ class Result(BaseResult):
             return {'accuracy': acc, 'precision': prec, 'recall': rec, 'f1_score': [f1_score_0, f1_score_1], 'micro': micro_f1, 'macro': macro_f1}
         
 
-    def update_batch(self, batch_outputs: torch.Tensor, batch_labels: torch.Tensor):
+    def update_batch(self, batch_outputs: torch.Tensor, batch_labels: torch.Tensor, batch_features: list):
         """Update batch result during model eval.
 
         @batch_outputs: /
         @batch_label: /
         """
-        self.pred += torch.argmax(batch_outputs, axis=1).cpu().detach().numpy().tolist()
-        self.label += batch_labels.cpu().detach().numpy().tolist()
-        
+        # update batch output
+        pred = torch.argmax(batch_outputs, axis=1).cpu().detach().numpy().tolist()
+        self.pred += pred
+        label = batch_labels.cpu().detach().numpy().tolist()
+        self.label += label
+
+        # update batch bad case
+        assert len(pred) == len(label) == len(batch_features)
+        for _ in range(len(pred)):
+            if pred[_] != label[_]:
+                self.bad_case['text'].append(batch_features[_].sentence)
+                self.bad_case['id'].append(batch_features[_].doc_id)
+                self.bad_case['pred'].append(pred[_])
+                self.bad_case['label'].append(label[_])

@@ -1,7 +1,7 @@
 """
 -*- coding: utf-8 -*-
 @author: black_tears
-@time: 2021-07-09
+@time: 2021-09-23
 @description: custom task file.
 """
 
@@ -12,13 +12,14 @@ import tqdm
 import torch
 import pandas as pd
 from transformers import BertConfig, BertTokenizer
+from transformers.utils.dummy_tokenizers_objects import BertTokenizerFast
 from base.base_task import BasePytorchTask
 from base.base_setting import TaskSetting
-from .model_for_cls import BertForSequenceClassification
-from .utils_for_cls import *
+from .model_for_seq_tag import BertForSequenceTagging
+from .utils_for_seq_tag import *
 
 
-class ClassificationTask(BasePytorchTask):
+class SequenceTaggingTask(BasePytorchTask):
     def __init__(self, task_setting: TaskSetting, load_train: bool=True, load_dev: bool=True, load_test: bool=True):
         """Custom Task definition class(custom).
 
@@ -27,7 +28,7 @@ class ClassificationTask(BasePytorchTask):
         @load_dev: load dev set.
         @load_test: load test set.
         """
-        super(ClassificationTask, self).__init__(task_setting)
+        super(SequenceTaggingTask, self).__init__(task_setting)
         self.logger.info('Initializing {}'.format(self.__class__.__name__))
 
         # prepare model
@@ -54,7 +55,7 @@ class ClassificationTask(BasePytorchTask):
         self.tokenizer = BertTokenizer.from_pretrained(self.setting.bert_model)
         self.bert_config = BertConfig.from_pretrained(self.setting.bert_model, num_labels=self.setting.num_label)
         self.setting.vocab_size = len(self.tokenizer.vocab)
-        self.model = BertForSequenceClassification.from_pretrained(self.setting.bert_model, config=self.bert_config)
+        self.model = BertForSequenceTagging.from_pretrained(self.setting.bert_model, config=self.bert_config)
 
 
     def load_examples_features(self, data_type: str, file_name: str, flag: bool) -> tuple:

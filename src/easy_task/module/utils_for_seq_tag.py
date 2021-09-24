@@ -1,7 +1,7 @@
 """
 -*- coding: utf-8 -*-
 @author: black_tears
-@time: 2021-07-09
+@time: 2021-09-23
 @description: task level function file.
 """
 
@@ -36,31 +36,18 @@ class TextDataset(Dataset):
         return self.examples[index]
 
 
-class ClassificationResult(BaseResult):
+class SequenceTaggingResult(BaseResult):
     """Store and calculate result class(custom), inherit from BaseResult.
 
     @task_name: string of task name
     """
     def __init__(self, task_name: str):
-        super(ClassificationResult, self).__init__(task_name=task_name)
+        super(SequenceTaggingResult, self).__init__(task_name=task_name)
         
     def get_score(self) -> dict:
         """Calculate task specific score(custom).
         """
-        assert len(self.label) == len(self.pred)
-        acc = self.accuracy
-        prec = self.precision
-        rec = self.recall
-        f1_score_1 = self.f1_score_1
-        f1_score_0 = self.f1_score_0
-        macro_f1 = self.macro_f1_score
-        micro_f1 = self.micro_f1_score
-        f_05 = self.f_05_score
-        if(self.prob):
-            auc = self.roc_auc
-            return {'accuracy': acc, 'precision': prec, 'recall': rec, 'f1_score': [f1_score_0, f1_score_1], 'auc': auc, 'f_05_score': f_05}
-        else:
-            return {'accuracy': acc, 'precision': prec, 'recall': rec, 'f1_score': [f1_score_0, f1_score_1], 'micro': micro_f1, 'macro': macro_f1}
+        pass
         
 
     def update_batch(self, batch_outputs: torch.Tensor, batch_labels: torch.Tensor, batch_features: list):

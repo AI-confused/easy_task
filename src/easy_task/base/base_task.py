@@ -493,7 +493,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
 
 
     @abc.abstractclassmethod
-    def load_examples_features(self, data_type: str, file_name: str, flag: bool) -> tuple:
+    def load_examples_features(self, **kwargs) -> tuple:
         """Load examples, features and dataset.
         
         Must be writen by inherit class.

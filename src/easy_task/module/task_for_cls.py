@@ -10,12 +10,15 @@ import os
 import random
 import tqdm
 import torch
+import logging
 import pandas as pd
 from transformers import BertConfig, BertTokenizer
-from base.base_task import BasePytorchTask
-from base.base_setting import TaskSetting
-from .model_for_cls import BertForSequenceClassification
-from .utils_for_cls import *
+# from base.base_task import BasePytorchTask
+# from base.base_setting import TaskSetting
+from base import *
+from module import *
+# from .model_for_cls import BertForSequenceClassification
+# from .utils_for_cls import *
 
 
 class ClassificationTask(BasePytorchTask):
@@ -82,7 +85,7 @@ class ClassificationTask(BasePytorchTask):
             torch.save(examples, cached_features_file0)
             torch.save(features, cached_features_file1)
         dataset = TextDataset(features)
-        return (examples, features, dataset)
+        return (examples, features, dataset, features[0].max_seq_len)
 
 
     def read_examples(self, input_file: str, percent: float=1.0) -> list:
@@ -124,7 +127,7 @@ class ClassificationTask(BasePytorchTask):
         @tokenizer: class BertTokenizer or its inherited classes
         @max_seq_len: max length of tokenized text
         """
-        results = []
+        features = []
         for _ in tqdm.tqdm(range(len(examples)), total=len(examples)):
             example = examples[_]
 
@@ -142,7 +145,7 @@ class ClassificationTask(BasePytorchTask):
             input_mask += ([0] * padding_length)
             segment_id += ([0] * padding_length)
 
-            results.append(
+            features.append(
                 InputFeature(
                     doc_id=example.doc_id,
                     sentence=example.text,
@@ -154,7 +157,7 @@ class ClassificationTask(BasePytorchTask):
                     label=example.label
                 )
             )
-        return results
+        return features
 
 
     def train(self, resume_base_epoch=None):

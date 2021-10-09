@@ -10,5 +10,5 @@ import sys
 cur_dir = os.path.abspath(__file__)
 sys.path.append('/'.join(cur_dir.split('/')[:-1]))
 from base import base_task, base_result, base_setting, base_utils
-from module import utils_for_cls, model_for_cls, task_for_cls
+from module import utils_for_cls, model_for_cls, task_for_cls, task_for_ner, utils_for_ner, model_for_ner
 

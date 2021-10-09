@@ -6,10 +6,9 @@
 """
 
 
-import os
 import json
-import logging
-from datetime import date, datetime
+from torch.utils.data import Dataset
+from transformers import BertTokenizer
 import pickle
 import yaml
 
@@ -97,3 +96,27 @@ class InputFeature(object):
     def __init__(self, **kwargs):
         for key, val in kwargs.items():
             setattr(self, key, val)
+
+
+class TextDataset(Dataset):
+    """Dataset class(custom).
+    
+    @examples: list of InputFeatures
+    """
+    def __init__(self, examples: list):
+        self.examples = examples
+        
+    def __len__(self) -> int:
+        return len(self.examples)
+      
+    def __getitem__(self, index: int):
+        return self.examples[index]
+
+
+class BERTChineseCharacterTokenizer(BertTokenizer):
+    """Customized tokenizer for Chinese.
+    
+    @text: text to tokenize.
+    """
+    def tokenize(self, text: str) -> list:
+        return list(text)

@@ -8,15 +8,17 @@
 
 import os
 import random
+import logging
 import tqdm
 import torch
 import pandas as pd
 from transformers import BertConfig, BertTokenizer
-from transformers.utils.dummy_tokenizers_objects import BertTokenizerFast
-from base.base_task import BasePytorchTask
-from base.base_setting import TaskSetting
-from .model_for_seq_tag import BertForSequenceTagging
-from .utils_for_seq_tag import *
+from base import *
+from module import *
+# from base.base_task import BasePytorchTask
+# from base.base_setting import TaskSetting
+# from .model_for_ner import BertForSequenceTagging
+# from .utils_for_ner import *
 
 
 class SequenceTaggingTask(BasePytorchTask):
@@ -52,7 +54,7 @@ class SequenceTaggingTask(BasePytorchTask):
 
         Can be overwriten.
         """
-        self.tokenizer = BertTokenizer.from_pretrained(self.setting.bert_model)
+        self.tokenizer = BERTChineseCharacterTokenizer.from_pretrained(self.setting.bert_model)
         self.bert_config = BertConfig.from_pretrained(self.setting.bert_model, num_labels=self.setting.num_label)
         self.setting.vocab_size = len(self.tokenizer.vocab)
         self.model = BertForSequenceTagging.from_pretrained(self.setting.bert_model, config=self.bert_config)
@@ -83,7 +85,7 @@ class SequenceTaggingTask(BasePytorchTask):
             torch.save(examples, cached_features_file0)
             torch.save(features, cached_features_file1)
         dataset = TextDataset(features)
-        return (examples, features, dataset)
+        return (examples, features, dataset, features[0].max_seq_len)
 
 
     def read_examples(self, input_file: str, percent: float=1.0) -> list:
@@ -95,20 +97,15 @@ class SequenceTaggingTask(BasePytorchTask):
         @percent: percent of reading samples
         """
         examples=[]
-        cnt = 10000
 
-        try:
-            data = json.load(open(input_file))['data']
-        except:
-            data = json.load(open(input_file))
+        data = pd.read_csv(input_file)
             
         if percent != 1.0:
-            data = random.sample(data, int(len(data)*percent))
-        for line in data:
-            text = line['text']
-            label = line['label']
-            doc_id = cnt
-            cnt += 1
+            data = data.sample(frac=percent, random_state=0)
+        for i in data.index:
+            text = data.iloc[i]['text']
+            label = json.loads(data.iloc[i]['label'])
+            doc_id = data.iloc[i]['id']
             examples.append(InputExample(
                 doc_id=doc_id, 
                 text=text,
@@ -125,12 +122,29 @@ class SequenceTaggingTask(BasePytorchTask):
         @tokenizer: class BertTokenizer or its inherited classes
         @max_seq_len: max length of tokenized text
         """
-        results = []
+        features = []
         for _ in tqdm.tqdm(range(len(examples)), total=len(examples)):
             example = examples[_]
 
+            # tag label
+            labels = sorted(example.label, key=lambda x: x[1])
+            sen_labels = []
+            last_point = 0
+            for _ in labels:
+                if _[1] < last_point:
+                    continue
+                sen_labels += [0]*(_[1]-last_point)
+                sen_labels += [self.setting.label2id[_[0]]]
+                sen_labels += [self.setting.label2id[_[0]] + (len(self.setting.label2id) - 1)] * (_[2] - _[1] - 1)
+                last_point = _[2]
+            sen_labels += [0] * (len(example.text) - last_point)
+            assert len(example.text) == len(sen_labels)
+
             # tokenize
             sentence_token = tokenizer.tokenize(example.text)[:max_seq_len-2]
+            example.text = example.text[:max_seq_len-2]
+            sen_labels = sen_labels[:max_seq_len-2]
+            assert len(sentence_token) == len(sen_labels)
             sentence_len = len(sentence_token)
             input_token = ['[CLS]'] + sentence_token + ['[SEP]']
             segment_id = [0] * len(input_token)
@@ -142,20 +156,24 @@ class SequenceTaggingTask(BasePytorchTask):
             input_id += ([0] * padding_length)
             input_mask += ([0] * padding_length)
             segment_id += ([0] * padding_length)
+            BIO_label = [0] + sen_labels + [-1]*padding_length + [0]
+            assert len(BIO_label) == max_seq_len
 
-            results.append(
+            features.append(
                 InputFeature(
                     doc_id=example.doc_id,
                     sentence=example.text,
+                    entity_label=labels,
                     input_tokens=input_token,
                     input_ids=input_id,
                     input_masks=input_mask,
                     segment_ids=segment_id,
                     sentence_len=sentence_len,
-                    label=example.label
+                    label=BIO_label,
+                    max_seq_len=max_seq_len
                 )
             )
-        return results
+        return features
 
 
     def train(self, resume_base_epoch=None):
@@ -208,7 +226,7 @@ class SequenceTaggingTask(BasePytorchTask):
                 dataset = self.dev_dataset
 
             # init Result class
-            self.result = ClassificationResult(task_name=self.setting.task_name)
+            self.result = SequenceTaggingResult(task_name=self.setting.task_name, id2label=self.setting.id2label, max_seq_len=self.setting.max_seq_len)
 
             # prepare data loader
             self.eval_dataloader = self._prepare_data_loader(dataset, self.setting.eval_batch_size, rand_flag=False, collate_fn=self.custom_collate_fn_eval)
@@ -228,13 +246,13 @@ class SequenceTaggingTask(BasePytorchTask):
                                                 .format(data_type, epoch, self.train_loss, json.dumps(score, ensure_ascii=False)))
 
             # save best model with specific standard(custom)
-            if data_type == 'dev' and score['f1_score'][1] > self.best_dev_score:
-                self.best_dev_score = score['f1_score'][1]
+            if data_type == 'dev' and score['micro_f1'] > self.best_dev_score:
+                self.best_dev_score = score['micro_f1']
                 self.logger.info('saving best dev model...')
                 self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}'.format(self.setting.task_name, data_type, 0))
 
-            if data_type == 'test' and score['f1_score'][1] > self.best_test_score:
-                self.best_test_score = score['f1_score'][1]
+            if data_type == 'test' and score['micro_f1'] > self.best_test_score:
+                self.best_test_score = score['micro_f1']
                 self.logger.info('saving best test model...')
                 self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}'.format(self.setting.task_name, data_type, 0))
                 
@@ -296,7 +314,7 @@ class SequenceTaggingTask(BasePytorchTask):
         self.resume_checkpoint(cpt_file_name=resume_model_name, resume_model=True, resume_optimizer=False)
 
         # init Result class
-        self.result = ClassificationResult(task_name=self.setting.task_name)
+        self.result = SequenceTaggingResult(task_name=self.setting.task_name)
 
         # prepare data loader
         self.eval_dataloader = self._prepare_data_loader(self.test_dataset, self.setting.eval_batch_size, rand_flag=False, collate_fn=self.custom_collate_fn_eval)

@@ -24,7 +24,7 @@ class BaseResult(metaclass=abc.ABCMeta):
         self.label = []
         self.pred = []
         self.prob = []
-        self.bad_case = {'text': [], 'id': [], 'pred': [], 'label': []}
+        self.bad_case = {}
 
     @property
     def accuracy(self):

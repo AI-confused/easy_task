@@ -230,7 +230,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         #load train portion
         if load_train:
             self.logger.info('Load train portion')
-            self.train_examples, self.train_features, self.train_dataset = self.load_examples_features('train', self.setting.train_file_name, 1)
+            self.train_examples, self.train_features, self.train_dataset, self.setting.max_seq_len = self.load_examples_features('train', self.setting.train_file_name, 1)
             self.logger.info('Load train portion done')
             self.logger.info('training examples: {}, features: {} at max_sequence_len: {}'.format(len(self.train_examples), len(self.train_features), self.setting.max_seq_len))
         else:
@@ -239,7 +239,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         # load dev portion
         if load_dev:
             self.logger.info('Load dev portion')
-            self.dev_examples, self.dev_features, self.dev_dataset = self.load_examples_features('dev', self.setting.dev_file_name, 0)
+            self.dev_examples, self.dev_features, self.dev_dataset, self.setting.max_seq_len = self.load_examples_features('dev', self.setting.dev_file_name, 0)
             self.logger.info('Load dev portion done!')
             self.logger.info('dev examples: {}, features: {} at max_sequence_len: {}'.format(len(self.dev_examples), len(self.dev_features), self.setting.max_seq_len))
         else:
@@ -248,7 +248,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         # load test portion
         if load_test:
             self.logger.info('Load test portion')
-            self.test_examples, self.test_features, self.test_dataset = self.load_examples_features('test', self.setting.test_file_name, 0)
+            self.test_examples, self.test_features, self.test_dataset, self.setting.max_seq_len = self.load_examples_features('test', self.setting.test_file_name, 0)
             self.logger.info('Load test portion done!')
             self.logger.info('test examples: {}, features: {} at max_sequence_len: {}'.format(len(self.test_examples), len(self.test_features), self.setting.max_seq_len))
         else:
@@ -342,7 +342,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         """
         assert self.model is not None
         self.logger.info('=' * 20 + 'Start Evaluation/{}'.format(data_type) + '=' * 20)
-        self.logger.info('\nPROGRESS: {}\n'.format(epoch / self.setting.num_train_epochs))
+        self.logger.info('\tPROGRESS: {}'.format(epoch / self.setting.num_train_epochs))
         self.logger.info("\tNum examples = {}".format(len(eval_examples)))
         self.logger.info("\tNum features = {}".format(len(eval_features)))
         self.logger.info("\tBatch size = {}".format(self.setting.eval_batch_size))
@@ -355,8 +355,8 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
             batch = self.__set_batch_to_device(batch)
 
             with torch.no_grad():
-                batch_output, batch_label, batch_features = self.get_result_on_batch(batch)
-                self.result.update_batch(batch_outputs=batch_output, batch_labels=batch_label, batch_features=batch_features)
+                batch_results = self.get_result_on_batch(batch)
+                self.result.update_batch(batch_results=batch_results)
 
 
     def save_checkpoint(self, cpt_file_name: str=None, epoch: int=None):

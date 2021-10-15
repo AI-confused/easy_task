@@ -10,8 +10,6 @@ __pycache__/
 dataset/
 pretrained_model/
 output/
-examples/
-task_config/
 .vscode/
 
 # Distribution / packaging

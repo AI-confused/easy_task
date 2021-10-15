@@ -1,0 +1,44 @@
+# sequence tagging task setting parameters
+data_dir: '/mnt/data/github/easy_task/dataset/CGED_2018/'
+exp_dir: '/mnt/data/github/easy_task/output'
+task_name: 'CGED_2018_roberta_large_1e-4'
+skip_train: False
+bert_model: '/mnt/data/github/easy_task/pretrained_model/chinese_roberta_wwm_large_ext_pytorch'
+# resume_model_name: '/mnt/data/github/easy_task/output/classification_parallelism/Model/classification_parallelism.cpt.test.0'
+train_file_name: 'train.csv'
+dev_file_name: 'dev.csv'
+test_file_name: 'test.csv'
+eval_file:
+  - 'dev'
+  # - 'test'
+num_label: 9
+max_seq_len: 256
+train_batch_size: 32
+eval_batch_size: 64
+learning_rate: 1e-5
+num_train_epochs: 20
+warmup_proportion: 0.1
+no_cuda: False
+# specify the GPU number
+cuda_device: '0,1'
+seed: 99
+gradient_accumulation_steps: 1
+over_write_cache: False
+resume_latest_cpt: True
+optimize_on_cpu: False
+bad_case: True
+# save_cpt_flag value: {0: only save best model; 1: save best model & last epoch model; 2: save best model & each epoch model}
+save_cpt_flag: 1
+percent: 1.0
+label2id:
+  '无标签': 0
+  'M': 1
+  'S': 2
+  'W': 3
+  'R': 4
+id2label:
+  0: '无标签'
+  1: 'M'
+  2: 'S'
+  3: 'W'
+  4: 'R'

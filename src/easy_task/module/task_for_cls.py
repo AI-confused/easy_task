@@ -38,7 +38,7 @@ class ClassificationTask(BasePytorchTask):
         self._decorate_model()
 
         # prepare optim
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=float(self.setting.learning_rate))
+        self.prepare_optimizer()
 
         # load dataset
         self.load_data(load_train, load_dev, load_test)
@@ -58,6 +58,14 @@ class ClassificationTask(BasePytorchTask):
         self.bert_config = BertConfig.from_pretrained(self.setting.bert_model, num_labels=self.setting.num_label)
         self.setting.vocab_size = len(self.tokenizer.vocab)
         self.model = BertForSequenceClassification.from_pretrained(self.setting.bert_model, config=self.bert_config)
+
+
+    def prepare_optimizer(self):
+        """Prepare cls task optimizer(custom).
+
+        Can be overwriten.
+        """
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=float(self.setting.learning_rate))
 
 
     def load_examples_features(self, data_type: str, file_name: str, flag: bool) -> tuple:

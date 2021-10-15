@@ -457,6 +457,15 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
 
 
     @abc.abstractclassmethod
+    def prepare_optimizer(self):
+        """repare ner task optimizer(custom).
+
+        Must be writen by inherit class.
+        """
+        pass
+
+
+    @abc.abstractclassmethod
     def write_results(self, **kwargs):
         """Write results to output file.
 

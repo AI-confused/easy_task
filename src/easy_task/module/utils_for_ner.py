@@ -21,14 +21,13 @@ class SequenceTaggingResult(BaseResult):
     def __init__(self, task_name: str, id2label: dict, max_seq_len: int, output_dir: str=None):
         super(SequenceTaggingResult, self).__init__(task_name=task_name)
         self.bad_case = {'text': [], 'id': [], 'pred': [], 'label': []}
+        self.all_result = {'text': [], 'id': [], 'pred': [], 'label': []}
         self.TP = 0
         self.Predict_num = 0
         self.Label_num = 0
         self.prediction = {}
-        self.huashu_samples = {}
         self.id2label = id2label
         self.max_seq_len = max_seq_len
-        self.output_dir = output_dir
         
 
     def get_entity_span(self, label: int, start: int, logit: int):
@@ -135,8 +134,14 @@ class SequenceTaggingResult(BaseResult):
         if res_label != res_pred:
             self.bad_case['text'].append(value['feature'].sentence)
             self.bad_case['id'].append(value['feature'].doc_id)
-            self.bad_case['pred'].append(res_pred)
-            self.bad_case['label'].append(res_label)
+            self.bad_case['pred'].append(res_pred[:])
+            self.bad_case['label'].append(res_label[:])
+
+        # return all prediction
+        self.all_result['text'].append(value['feature'].sentence)
+        self.all_result['id'].append(value['feature'].doc_id)
+        self.all_result['pred'].append(res_pred[:])
+        self.all_result['label'].append(res_label[:])
 
         return res_pred, res_label
 

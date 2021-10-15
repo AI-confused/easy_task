@@ -38,7 +38,7 @@ class SequenceTaggingTask(BasePytorchTask):
         self._decorate_model()
 
         # prepare optim
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=float(self.setting.learning_rate))
+        self.prepare_optimizer()
 
         # load dataset
         self.load_data(load_train, load_dev, load_test)
@@ -50,7 +50,7 @@ class SequenceTaggingTask(BasePytorchTask):
 
 
     def prepare_task_model(self):
-        """Prepare classification task model(custom).
+        """Prepare ner task model(custom).
 
         Can be overwriten.
         """
@@ -58,6 +58,14 @@ class SequenceTaggingTask(BasePytorchTask):
         self.bert_config = BertConfig.from_pretrained(self.setting.bert_model, num_labels=self.setting.num_label)
         self.setting.vocab_size = len(self.tokenizer.vocab)
         self.model = BertForSequenceTagging.from_pretrained(self.setting.bert_model, config=self.bert_config)
+
+
+    def prepare_optimizer(self):
+        """Prepare ner task optimizer(custom).
+
+        Can be overwriten.
+        """
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=float(self.setting.learning_rate))
 
 
     def load_examples_features(self, data_type: str, file_name: str, flag: bool) -> tuple:
@@ -238,8 +246,11 @@ class SequenceTaggingTask(BasePytorchTask):
             self.logger.info(score)
 
             # return bad case in train-mode
-            if self.setting.train_bad_case:
-                self.return_bad_case(data_type=data_type, epoch=epoch)
+            if self.setting.bad_case:
+                self.return_bad_case(type_='bad_case', items=self.result.bad_case, data_type=data_type, epoch=epoch)
+
+            # return all result
+            self.return_bad_case(type_='all_result', items=self.result.all_result, data_type=data_type, epoch=epoch)
             
             # save each epoch result
             self.output_result['result'].append('data_type: {} - epoch: {} - train_loss: {} - epoch_score: {}'\
@@ -333,8 +344,11 @@ class SequenceTaggingTask(BasePytorchTask):
         self.write_results()
 
         # write bad case
-        if self.setting.test_bad_case:
-            self.return_bad_case()
+        if self.setting.bad_case:
+            self.return_bad_case(type_='bad_case', items=self.result.bad_case)
+
+        # write all result
+        self.return_bad_case(type_='all_result', items=self.result.all_result)
     
 
     def get_result_on_batch(self, batch: tuple):
@@ -382,23 +396,25 @@ class SequenceTaggingTask(BasePytorchTask):
         self.logger.info('write results to {}'.format(result_file))
 
         
-    def return_bad_case(self, file_type: str='excel', data_type: str='', epoch=''):
+    def return_bad_case(self, type_: str, items: dict, file_type: str='excel', data_type: str='', epoch=''):
         """Return eval bad case and dump to file.
 
         Can be overwriten.
 
+        @type_: bad_case or all_result
+        @items: {'text': [], 'id': [], 'pred': [], 'label': []}
         @file_type: file type of bad case.
-        @data_type: test or dev during train-mode, not used during test-mode.
-        epoch: train epoch during train-mode, not used during test-mode.
+        @data_type: test or dev in train-mode, not used in test-mode.
+        epoch: train epoch in train-mode, not used in test-mode.
         """
-        dataframe = pd.DataFrame(self.result.bad_case)
+        dataframe = pd.DataFrame(items)
         if file_type == 'excel':
-            bad_case_file = os.path.join(self.setting.result_dir, 'badcase-{}-{}-{}-{}.xlsx'.format(self.now_time, data_type, epoch, self.output_result['result_type']))
+            bad_case_file = os.path.join(self.setting.result_dir, '{}-{}-{}-{}-{}.xlsx'.format(type_, self.now_time, data_type, epoch, self.output_result['result_type']))
             dataframe.to_excel(bad_case_file, index=False)
         elif file_type == 'csv':
-            bad_case_file = os.path.join(self.setting.result_dir, 'badcase-{}-{}-{}-{}.csv'.format(self.now_time, data_type, epoch, self.output_result['result_type']))
+            bad_case_file = os.path.join(self.setting.result_dir, '{}-{}-{}-{}-{}.csv'.format(type_, self.now_time, data_type, epoch, self.output_result['result_type']))
             dataframe.to_csv(bad_case_file, index=False)
         else:
             raise ValueError('Wrong file_type!')
 
-        self.logger.info('write badcases to {}'.format(bad_case_file))
+        self.logger.info('write {} to {}'.format(type_, bad_case_file))

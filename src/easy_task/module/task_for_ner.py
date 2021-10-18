@@ -15,10 +15,6 @@ import pandas as pd
 from transformers import BertConfig, BertTokenizer
 from base import *
 from module import *
-# from base.base_task import BasePytorchTask
-# from base.base_setting import TaskSetting
-# from .model_for_ner import BertForSequenceTagging
-# from .utils_for_ner import *
 
 
 class SequenceTaggingTask(BasePytorchTask):

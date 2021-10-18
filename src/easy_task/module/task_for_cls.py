@@ -13,12 +13,8 @@ import torch
 import logging
 import pandas as pd
 from transformers import BertConfig, BertTokenizer
-# from base.base_task import BasePytorchTask
-# from base.base_setting import TaskSetting
 from base import *
 from module import *
-# from .model_for_cls import BertForSequenceClassification
-# from .utils_for_cls import *
 
 
 class ClassificationTask(BasePytorchTask):

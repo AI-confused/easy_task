@@ -1,7 +1,7 @@
 # sequence tagging task setting parameters
-data_dir: '/mnt/data/github/easy_task/dataset/CGED_2018/'
+data_dir: '/mnt/data/github/easy_task/dataset/CGED_2018_new/'
 exp_dir: '/mnt/data/github/easy_task/output'
-task_name: 'CGED_2018_roberta_large_1e-4'
+task_name: 'CGED_2018_new_roberta_large_1e-5'
 skip_train: False
 bert_model: '/mnt/data/github/easy_task/pretrained_model/chinese_roberta_wwm_large_ext_pytorch'
 # resume_model_name: '/mnt/data/github/easy_task/output/classification_parallelism/Model/classification_parallelism.cpt.test.0'
@@ -10,7 +10,7 @@ dev_file_name: 'dev.csv'
 test_file_name: 'test.csv'
 eval_file:
   - 'dev'
-  # - 'test'
+  - 'test'
 num_label: 9
 max_seq_len: 256
 train_batch_size: 32

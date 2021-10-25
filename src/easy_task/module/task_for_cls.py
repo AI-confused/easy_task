@@ -8,6 +8,7 @@
 
 import os
 import random
+from torch.jit import Error
 import tqdm
 import torch
 import logging
@@ -41,7 +42,9 @@ class ClassificationTask(BasePytorchTask):
 
         # best score and output result(custom)
         self.best_dev_score = 0.0
+        self.best_dev_epoch = 0
         self.best_test_score = 0.0
+        self.best_test_epoch = 0
         self.output_result = {'result_type': '', 'task_config': self.setting.__dict__, 'result': []}
 
 
@@ -72,14 +75,13 @@ class ClassificationTask(BasePytorchTask):
         self.result = ClassificationResult(task_name=self.setting.task_name)
 
 
-    def load_examples_features(self, data_type: str, file_name: str, flag: bool) -> tuple:
+    def load_examples_features(self, data_type: str, file_name: str) -> tuple:
         """Load examples, features and dataset(custom).
 
         Can be overwriten, but with the same input parameters and output type.
         
         @data_type: train or dev or test
         @file_name: dataset file name
-        @flag: 1 means training, 0 means evaling
         """
         cached_features_file0 = os.path.join(self.setting.model_dir, 'cached_{}_{}_{}'.format(self.setting.percent, data_type, 'examples'))
         cached_features_file1 = os.path.join(self.setting.model_dir, 'cached_{}_{}_{}'.format(self.setting.percent, data_type, 'features'))
@@ -91,8 +93,7 @@ class ClassificationTask(BasePytorchTask):
             examples = self.read_examples(os.path.join(self.setting.data_dir, file_name), percent=self.setting.percent)
             features = self.convert_examples_to_features(examples,
                                                         tokenizer=self.tokenizer,
-                                                        max_seq_len=self.setting.max_seq_len,
-                                                        is_training=flag)
+                                                        max_seq_len=self.setting.max_seq_len)
  
             torch.save(examples, cached_features_file0)
             torch.save(features, cached_features_file1)
@@ -120,7 +121,12 @@ class ClassificationTask(BasePytorchTask):
             data = random.sample(data, int(len(data)*percent))
         for line in data:
             text = line['text']
-            label = line['label']
+            try:
+                # for data which has label
+                label = line['label']
+            except:
+                # for data which don't have label
+                label = -1
             doc_id = cnt
             cnt += 1
             examples.append(InputExample(
@@ -166,32 +172,40 @@ class ClassificationTask(BasePytorchTask):
                     input_masks=input_mask,
                     segment_ids=segment_id,
                     sentence_len=sentence_len,
-                    label=example.label
+                    label=example.label,
+                    max_seq_len=max_seq_len,
                 )
             )
         return features
 
 
-    def train(self, resume_base_epoch=None):
+    def train(self, resume_base_epoch=None, resume_model_path=None):
         """Task level train func.
 
         @resume_base_epoch(int): start training epoch
+        @resume_model_path(str): other model to restart with
         """
         self.logger.info('=' * 20 + 'Start Training {}'.format(self.setting.task_name) + '=' * 20)
 
-        # whether to resume latest cpt when restarting
-        if resume_base_epoch is None:
-            if self.setting.resume_latest_cpt:
-                resume_base_epoch = self.get_latest_cpt_epoch()
-            else:
-                resume_base_epoch = 0
-
-        # resume cpt if possible
-        if resume_base_epoch > 0:
-            self.logger.info('Training starts from epoch {}'.format(resume_base_epoch))
-            self.resume_checkpoint(cpt_file_name='{}.cpt.{}'.format(self.setting.task_name, resume_base_epoch), resume_model=True, resume_optimizer=True)
+        # resume model when restarting
+        if resume_base_epoch is not None and resume_model_path is not None:
+            raise ValueError('resume_base_epoch and resume_model_path can not be together!')
+        elif resume_model_path is not None:
+            self.logger.info('Training starts from other model: {}'.format(resume_model_path))
+            self.resume_checkpoint(cpt_file_file=resume_model_path, resume_model=True, resume_optimizer=True)
         else:
-            self.logger.info('Training starts from scratch')
+            if resume_base_epoch is None:
+                if self.setting.resume_latest_cpt:
+                    resume_base_epoch = self.get_latest_cpt_epoch()
+                else:
+                    resume_base_epoch = 0
+
+            # resume cpt if possible
+            if resume_base_epoch > 0:
+                self.logger.info('Training starts from epoch {}'.format(resume_base_epoch))
+                self.resume_checkpoint(cpt_file_name='{}.cpt.{}'.format(self.setting.task_name, resume_base_epoch), resume_model=True, resume_optimizer=True)
+            else:
+                self.logger.info('Training starts from scratch')
 
         # prepare data loader
         self.train_dataloader = self._prepare_data_loader(self.train_dataset, self.setting.train_batch_size, rand_flag=True, collate_fn=self.custom_collate_fn_train)
@@ -200,7 +214,8 @@ class ClassificationTask(BasePytorchTask):
         self._base_train(base_epoch_idx=resume_base_epoch)
 
         # save best score
-        self.output_result['result'].append('best_dev_score: {} - best_test_score: {}'.format(self.best_dev_score, self.best_test_score))
+        self.output_result['result'].append('best_dev_epoch: {} - best_dev_score: {}'.format(self.best_dev_epoch, self.best_dev_score))
+        self.output_result['result'].append('best_test_epoch: {} - best_test_score: {}'.format(self.best_test_epoch, self.best_test_score))
 
         # write output results
         self.write_results()
@@ -211,6 +226,10 @@ class ClassificationTask(BasePytorchTask):
 
         @epoch(int): eval epoch
         """        
+        # check whether test file has label
+        if 'test' in self.setting.eval_file and self.test_features[0].label == -1:
+            raise ValueError('test should not in eval_file!')
+
         for data_type in self.setting.eval_file:
             if data_type == 'test':
                 features = self.test_features
@@ -236,20 +255,22 @@ class ClassificationTask(BasePytorchTask):
 
             # return bad case in train-mode
             if self.setting.bad_case:
-                self.return_bad_case(data_type=data_type, epoch=epoch)
+                self.return_selected_case(type_='badcase', items=self.result.bad_case, data_type=data_type, epoch=epoch)
             
             # save each epoch result
             self.output_result['result'].append('data_type: {} - epoch: {} - train_loss: {} - epoch_score: {}'\
                                                 .format(data_type, epoch, self.train_loss, json.dumps(score, ensure_ascii=False)))
 
             # save best model with specific standard(custom)
-            if data_type == 'dev' and score['f1_score'][1] > self.best_dev_score:
-                self.best_dev_score = score['f1_score'][1]
+            if data_type == 'dev' and score['f1_score'] > self.best_dev_score:
+                self.best_dev_epoch = epoch
+                self.best_dev_score = score['f1_score']
                 self.logger.info('saving best dev model...')
                 self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}'.format(self.setting.task_name, data_type, 0))
 
-            if data_type == 'test' and score['f1_score'][1] > self.best_test_score:
-                self.best_test_score = score['f1_score'][1]
+            if data_type == 'test' and score['f1_score'] > self.best_test_score:
+                self.best_test_epoch = epoch
+                self.best_test_score = score['f1_score']
                 self.logger.info('saving best test model...')
                 self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}'.format(self.setting.task_name, data_type, 0))
                 
@@ -319,20 +340,9 @@ class ClassificationTask(BasePytorchTask):
         # do test
         self._base_eval(0, 'test', self.test_examples, self.test_features)
 
-        # calculate result score
-        score = self.result.get_score()
-        self.logger.info(score)
+        # output test prediction
+        self.return_selected_case(type_='prediction', items=self.result.prediction, file_type='csv', data_type='test')
 
-        # write results
-        self.output_result['result'].append('test_score: {}'.format(json.dumps(score, ensure_ascii=False)))
-
-        # write output results
-        self.write_results()
-
-        # write bad case
-        if self.setting.bad_case:
-            self.return_bad_case()
-    
 
     def get_result_on_batch(self, batch: tuple):
         """Return batch output logits during eval model(custom).
@@ -378,24 +388,3 @@ class ClassificationTask(BasePytorchTask):
         BaseUtils.write_lines(file_path=result_file, content=self.output_result['result'])
         self.logger.info('write results to {}'.format(result_file))
 
-        
-    def return_bad_case(self, file_type: str='excel', data_type: str='', epoch=''):
-        """Return eval bad case and dump to file.
-
-        Can be overwriten.
-
-        @file_type: file type of bad case.
-        @data_type: test or dev during train-mode, not used during test-mode.
-        epoch: train epoch during train-mode, not used during test-mode.
-        """
-        dataframe = pd.DataFrame(self.result.bad_case)
-        if file_type == 'excel':
-            bad_case_file = os.path.join(self.setting.result_dir, 'badcase-{}-{}-{}-{}.xlsx'.format(self.now_time, data_type, epoch, self.output_result['result_type']))
-            dataframe.to_excel(bad_case_file, index=False)
-        elif file_type == 'csv':
-            bad_case_file = os.path.join(self.setting.result_dir, 'badcase-{}-{}-{}-{}.csv'.format(self.now_time, data_type, epoch, self.output_result['result_type']))
-            dataframe.to_csv(bad_case_file, index=False)
-        else:
-            raise ValueError('Wrong file_type!')
-
-        self.logger.info('write badcases to {}'.format(bad_case_file))

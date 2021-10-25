@@ -7,8 +7,10 @@
 
 
 import logging
+from pickle import NONE
 import random
 from datetime import datetime
+import pandas as pd
 import os
 import abc
 import json
@@ -382,10 +384,11 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         torch.save(store_dict, cpt_file_path)
 
 
-    def resume_checkpoint(self, cpt_file_name: str=None, resume_model: bool=True, resume_optimizer: bool=False, strict: bool=False):
+    def resume_checkpoint(self, cpt_file_name: str=None, cpt_file_path: str=None, resume_model: bool=True, resume_optimizer: bool=False, strict: bool=False):
         """Load checkpoint from saved file.
 
         @cpt_file_name: saved model file name.
+        @cpt_file_path: abs path of resume model file.
         @resume_model: load model weights.
         @resume_optimizer: load optimizer weights.
         @strict: /
@@ -393,9 +396,10 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         self.logger.info('='*20 + 'Resume Checkpoint' + '='*20)
 
         # build checkpoint file path
-        if cpt_file_name == None:
-            raise ValueError('cpt_file_name should not be None')
-        cpt_file_path = os.path.join(self.setting.model_dir, cpt_file_name)
+        if (cpt_file_name is not None and cpt_file_path is not None) or (cpt_file_name is None and cpt_file_path is None):
+            raise ValueError('cpt_file_name and cpt_file_path must have one!')
+        elif cpt_file_name is not None:
+            cpt_file_path = os.path.join(self.setting.model_dir, cpt_file_name)
         
         if os.path.exists(cpt_file_path):
             self.logger.info('Resume checkpoint from {}'.format(cpt_file_path))
@@ -429,6 +433,30 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
                 raise Exception('Resume optimizer failed, dict.keys = {}'.format(store_dict.keys()))
         else:
             self.logger.info('Do not resume optimizer')
+
+
+    def return_selected_case(self, type_: str, items: dict, file_type: str='excel', data_type: str='', epoch=''):
+        """Return eval selected case and dump to file.
+
+        Can be overwriten.
+
+        @type_: bad_case or prediction.
+        @items: {'text': [], 'id': [], 'pred': [], 'label': []}
+        @file_type: file type of bad case.
+        @data_type: dev or test.
+        @epoch: train epoch in train-mode, not used in test-mode.
+        """
+        dataframe = pd.DataFrame(items)
+        if file_type == 'excel':
+            bad_case_file = os.path.join(self.setting.result_dir, '{}-{}-{}-{}-{}.xlsx'.format(type_, self.now_time, data_type, epoch, self.output_result['result_type']))
+            dataframe.to_excel(bad_case_file, index=False)
+        elif file_type == 'csv':
+            bad_case_file = os.path.join(self.setting.result_dir, '{}-{}-{}-{}-{}.csv'.format(type_, self.now_time, data_type, epoch, self.output_result['result_type']))
+            dataframe.to_csv(bad_case_file, index=False)
+        else:
+            raise ValueError('Wrong file_type!')
+
+        self.logger.info('write {} to {}'.format(type_, bad_case_file))
 
 
     def custom_collate_fn_train(self, examples: list) -> list:
@@ -554,15 +582,6 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
     def convert_examples_to_features(self, **kwargs) -> list:
         """Process the InputExamples into InputFeatures that can be fed into the model.
 
-        Must be writen by inherit class.
-        """
-        pass
-
-
-    @abc.abstractclassmethod
-    def return_bad_case(self, **kwargs):
-        """Return eval bad case and dump to file.
-        
         Must be writen by inherit class.
         """
         pass

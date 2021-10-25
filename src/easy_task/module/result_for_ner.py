@@ -107,11 +107,14 @@ class SequenceTaggingResult(BaseResult):
                 self.prediction[example.doc_id]['entity'] = []
             self.prediction[example.doc_id]['entity'] += entities[:]
 
-            if 'entity_label' not in self.prediction[example.doc_id].keys():
-                entity_labels = []
-                for entity_item in example.entity_label:
-                    entity_labels.append({entity_item[0]: example.sentence[entity_item[1]:entity_item[2]]})
-                self.prediction[example.doc_id]['entity_label'] = entity_labels[:]
+            try:
+                if 'entity_label' not in self.prediction[example.doc_id].keys():
+                    entity_labels = []
+                    for entity_item in example.entity_label:
+                        entity_labels.append({entity_item[0]: example.sentence[entity_item[1]:entity_item[2]]})
+                    self.prediction[example.doc_id]['entity_label'] = entity_labels[:]
+            except:
+                pass
 
             if 'feature' not in self.prediction[example.doc_id].keys():
                 self.prediction[example.doc_id]['feature'] = example
@@ -166,3 +169,19 @@ class SequenceTaggingResult(BaseResult):
         micro_f1 = 2*precision*recall/(precision+recall+1e-6)
         
         return {'micro_f1': micro_f1, 'precision': precision, 'recall': recall}
+
+
+    def get_prediction(self):
+        """Obtain predictions in test-mode.
+        """
+        for _, value in self.prediction.items():
+            res_pred = []
+            if value['entity']:
+                res_pred = self.reform_entity(value['entity'])
+
+                # return prediction
+                self.all_result['text'].append(value['feature'].sentence)
+                self.all_result['id'].append(value['feature'].doc_id)
+                self.all_result['pred'].append(res_pred[:])
+
+        self.all_result.pop('label')

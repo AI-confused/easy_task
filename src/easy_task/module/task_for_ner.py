@@ -41,7 +41,9 @@ class SequenceTaggingTask(BasePytorchTask):
 
         # best score and output result(custom)
         self.best_dev_score = 0.0
+        self.best_dev_epoch = 0
         self.best_test_score = 0.0
+        self.best_test_epoch = 0
         self.output_result = {'result_type': '', 'task_config': self.setting.__dict__, 'result': []}
 
 
@@ -72,14 +74,13 @@ class SequenceTaggingTask(BasePytorchTask):
         self.result = SequenceTaggingResult(task_name=self.setting.task_name, id2label=self.setting.id2label, max_seq_len=self.setting.max_seq_len)
 
 
-    def load_examples_features(self, data_type: str, file_name: str, flag: bool) -> tuple:
+    def load_examples_features(self, data_type: str, file_name: str) -> tuple:
         """Load examples, features and dataset(custom).
 
         Can be overwriten, but with the same input parameters and output type.
         
         @data_type: train or dev or test
         @file_name: dataset file name
-        @flag: 1 means training, 0 means evaling
         """
         cached_features_file0 = os.path.join(self.setting.model_dir, 'cached_{}_{}_{}'.format(self.setting.percent, data_type, 'examples'))
         cached_features_file1 = os.path.join(self.setting.model_dir, 'cached_{}_{}_{}'.format(self.setting.percent, data_type, 'features'))
@@ -91,8 +92,7 @@ class SequenceTaggingTask(BasePytorchTask):
             examples = self.read_examples(os.path.join(self.setting.data_dir, file_name), percent=self.setting.percent)
             features = self.convert_examples_to_features(examples,
                                                         tokenizer=self.tokenizer,
-                                                        max_seq_len=self.setting.max_seq_len,
-                                                        is_training=flag)
+                                                        max_seq_len=self.setting.max_seq_len)
  
             torch.save(examples, cached_features_file0)
             torch.save(features, cached_features_file1)
@@ -116,10 +116,13 @@ class SequenceTaggingTask(BasePytorchTask):
             data = data.sample(frac=percent, random_state=0)
         for i in data.index:
             text = data.iloc[i]['text']
-            label = json.loads(data.iloc[i]['label'])
             doc_id = data.iloc[i]['id']
+            try: 
+                label = json.loads(data.iloc[i]['label'])
+            except:
+                label = None
             examples.append(InputExample(
-                doc_id=doc_id, 
+                doc_id=doc_id,
                 text=text,
                 label=label))
         return examples
@@ -138,76 +141,112 @@ class SequenceTaggingTask(BasePytorchTask):
         for _ in tqdm.tqdm(range(len(examples)), total=len(examples)):
             example = examples[_]
 
-            # tag label
-            labels = sorted(example.label, key=lambda x: x[1])
-            sen_labels = []
-            last_point = 0
-            for _ in labels:
-                if _[1] < last_point:
-                    continue
-                sen_labels += [0]*(_[1]-last_point)
-                sen_labels += [self.setting.label2id[_[0]]]
-                sen_labels += [self.setting.label2id[_[0]] + (len(self.setting.label2id) - 1)] * (_[2] - _[1] - 1)
-                last_point = _[2]
-            sen_labels += [0] * (len(example.text) - last_point)
-            assert len(example.text) == len(sen_labels)
+            if example.label is not None:
+                # tag label
+                labels = sorted(example.label, key=lambda x: x[1])
+                sen_labels = []
+                last_point = 0
+                for _ in labels:
+                    if _[1] < last_point:
+                        continue
+                    sen_labels += [0]*(_[1]-last_point)
+                    sen_labels += [self.setting.label2id[_[0]]]
+                    sen_labels += [self.setting.label2id[_[0]] + (len(self.setting.label2id) - 1)] * (_[2] - _[1] - 1)
+                    last_point = _[2]
+                sen_labels += [0] * (len(example.text) - last_point)
+                assert len(example.text) == len(sen_labels)
 
-            # tokenize
-            sentence_token = tokenizer.tokenize(example.text)[:max_seq_len-2]
-            example.text = example.text[:max_seq_len-2]
-            sen_labels = sen_labels[:max_seq_len-2]
-            assert len(sentence_token) == len(sen_labels)
-            sentence_len = len(sentence_token)
-            input_token = ['[CLS]'] + sentence_token + ['[SEP]']
-            segment_id = [0] * len(input_token)
-            input_id = tokenizer.convert_tokens_to_ids(input_token)
-            input_mask = [1] * len(input_id)
+                # tokenize
+                sentence_token = tokenizer.tokenize(example.text)[:max_seq_len-2]
+                example.text = example.text[:max_seq_len-2]
+                sen_labels = sen_labels[:max_seq_len-2]
+                assert len(sentence_token) == len(sen_labels)
+                sentence_len = len(sentence_token)
+                input_token = ['[CLS]'] + sentence_token + ['[SEP]']
+                segment_id = [0] * len(input_token)
+                input_id = tokenizer.convert_tokens_to_ids(input_token)
+                input_mask = [1] * len(input_id)
 
-            # padding
-            padding_length = max_seq_len - len(input_id)
-            input_id += ([0] * padding_length)
-            input_mask += ([0] * padding_length)
-            segment_id += ([0] * padding_length)
-            BIO_label = [0] + sen_labels + [-1]*padding_length + [0]
-            assert len(BIO_label) == max_seq_len
+                # padding
+                padding_length = max_seq_len - len(input_id)
+                input_id += ([0] * padding_length)
+                input_mask += ([0] * padding_length)
+                segment_id += ([0] * padding_length)
+                BIO_label = [0] + sen_labels + [-1]*padding_length + [0]
+                assert len(BIO_label) == max_seq_len
 
-            features.append(
-                InputFeature(
-                    doc_id=example.doc_id,
-                    sentence=example.text,
-                    entity_label=labels,
-                    input_tokens=input_token,
-                    input_ids=input_id,
-                    input_masks=input_mask,
-                    segment_ids=segment_id,
-                    sentence_len=sentence_len,
-                    label=BIO_label,
-                    max_seq_len=max_seq_len
+                features.append(
+                    InputFeature(
+                        doc_id=example.doc_id,
+                        sentence=example.text,
+                        entity_label=labels,
+                        input_tokens=input_token,
+                        input_ids=input_id,
+                        input_masks=input_mask,
+                        segment_ids=segment_id,
+                        sentence_len=sentence_len,
+                        label=BIO_label,
+                        max_seq_len=max_seq_len
+                    )
                 )
-            )
+            else:
+                # tokenize
+                sentence_token = tokenizer.tokenize(example.text)[:max_seq_len-2]
+                example.text = example.text[:max_seq_len-2]
+                sentence_len = len(sentence_token)
+                input_token = ['[CLS]'] + sentence_token + ['[SEP]']
+                segment_id = [0] * len(input_token)
+                input_id = tokenizer.convert_tokens_to_ids(input_token)
+                input_mask = [1] * len(input_id)
+
+                # padding
+                padding_length = max_seq_len - len(input_id)
+                input_id += ([0] * padding_length)
+                input_mask += ([0] * padding_length)
+                segment_id += ([0] * padding_length)
+
+                features.append(
+                    InputFeature(
+                        doc_id=example.doc_id,
+                        sentence=example.text,
+                        input_tokens=input_token,
+                        input_ids=input_id,
+                        input_masks=input_mask,
+                        segment_ids=segment_id,
+                        sentence_len=sentence_len,
+                        max_seq_len=max_seq_len
+                    )
+                )
+
         return features
 
 
-    def train(self, resume_base_epoch=None):
+    def train(self, resume_base_epoch: int=None, resume_model_path: str=None):
         """Task level train func.
 
         @resume_base_epoch(int): start training epoch
         """
         self.logger.info('=' * 20 + 'Start Training {}'.format(self.setting.task_name) + '=' * 20)
 
-        # whether to resume latest cpt when restarting
-        if resume_base_epoch is None:
-            if self.setting.resume_latest_cpt:
-                resume_base_epoch = self.get_latest_cpt_epoch()
-            else:
-                resume_base_epoch = 0
-
-        # resume cpt if possible
-        if resume_base_epoch > 0:
-            self.logger.info('Training starts from epoch {}'.format(resume_base_epoch))
-            self.resume_checkpoint(cpt_file_name='{}.cpt.{}'.format(self.setting.task_name, resume_base_epoch), resume_model=True, resume_optimizer=True)
+        # resume model when restarting
+        if resume_base_epoch is not None and resume_model_path is not None:
+            raise ValueError('resume_base_epoch and resume_model_path can not be together!')
+        elif resume_model_path is not None:
+            self.logger.info('Training starts from other model: {}'.format(resume_model_path))
+            self.resume_checkpoint(cpt_file_file=resume_model_path, resume_model=True, resume_optimizer=True)
         else:
-            self.logger.info('Training starts from scratch')
+            if resume_base_epoch is None:
+                if self.setting.resume_latest_cpt:
+                    resume_base_epoch = self.get_latest_cpt_epoch()
+                else:
+                    resume_base_epoch = 0
+
+            # resume cpt if possible
+            if resume_base_epoch > 0:
+                self.logger.info('Training starts from epoch {}'.format(resume_base_epoch))
+                self.resume_checkpoint(cpt_file_name='{}.cpt.{}'.format(self.setting.task_name, resume_base_epoch), resume_model=True, resume_optimizer=True)
+            else:
+                self.logger.info('Training starts from scratch')
 
         # prepare data loader
         self.train_dataloader = self._prepare_data_loader(self.train_dataset, self.setting.train_batch_size, rand_flag=True, collate_fn=self.custom_collate_fn_train)
@@ -216,7 +255,8 @@ class SequenceTaggingTask(BasePytorchTask):
         self._base_train(base_epoch_idx=resume_base_epoch)
 
         # save best score
-        self.output_result['result'].append('best_dev_score: {} - best_test_score: {}'.format(self.best_dev_score, self.best_test_score))
+        self.output_result['result'].append('best_dev_epoch: {} - best_dev_score: {}'.format(self.best_dev_epoch, self.best_dev_score))
+        self.output_result['result'].append('best_test_epoch: {} - best_test_score: {}'.format(self.best_test_epoch, self.best_test_score))
 
         # write output results
         self.write_results()
@@ -252,10 +292,10 @@ class SequenceTaggingTask(BasePytorchTask):
 
             # return bad case in train-mode
             if self.setting.bad_case:
-                self.return_bad_case(type_='bad_case', items=self.result.bad_case, data_type=data_type, epoch=epoch)
+                self.return_selected_case(type_='bad_case', items=self.result.bad_case, data_type=data_type, epoch=epoch)
 
             # return all result
-            self.return_bad_case(type_='all_result', items=self.result.all_result, data_type=data_type, epoch=epoch)
+            self.return_selected_case(type_='eval_prediction', items=self.result.all_result, data_type=data_type, epoch=epoch)
             
             # save each epoch result
             self.output_result['result'].append('data_type: {} - epoch: {} - train_loss: {} - epoch_score: {}'\
@@ -263,11 +303,13 @@ class SequenceTaggingTask(BasePytorchTask):
 
             # save best model with specific standard(custom)
             if data_type == 'dev' and score['micro_f1'] > self.best_dev_score:
+                self.best_dev_epoch = epoch
                 self.best_dev_score = score['micro_f1']
                 self.logger.info('saving best dev model...')
                 self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}'.format(self.setting.task_name, data_type, 0))
 
             if data_type == 'test' and score['micro_f1'] > self.best_test_score:
+                self.best_test_epoch = epoch
                 self.best_test_score = score['micro_f1']
                 self.logger.info('saving best test model...')
                 self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}'.format(self.setting.task_name, data_type, 0))
@@ -338,22 +380,9 @@ class SequenceTaggingTask(BasePytorchTask):
         # do test
         self._base_eval(0, 'test', self.test_examples, self.test_features)
 
-        # calculate result score
-        score = self.result.get_score()
-        self.logger.info(score)
-
-        # write results
-        self.output_result['result'].append('test_score: {}'.format(json.dumps(score, ensure_ascii=False)))
-
-        # write output results
-        self.write_results()
-
-        # write bad case
-        if self.setting.bad_case:
-            self.return_bad_case(type_='bad_case', items=self.result.bad_case)
-
-        # write all result
-        self.return_bad_case(type_='all_result', items=self.result.all_result)
+        # output test prediction
+        self.result.get_prediction()
+        self.return_selected_case(type_='test_prediction', items=self.result.all_result)
     
 
     def get_result_on_batch(self, batch: tuple):
@@ -399,27 +428,3 @@ class SequenceTaggingTask(BasePytorchTask):
         # add each epoch eval result or test result
         BaseUtils.write_lines(file_path=result_file, content=self.output_result['result'])
         self.logger.info('write results to {}'.format(result_file))
-
-        
-    def return_bad_case(self, type_: str, items: dict, file_type: str='excel', data_type: str='', epoch=''):
-        """Return eval bad case and dump to file.
-
-        Can be overwriten.
-
-        @type_: bad_case or all_result
-        @items: {'text': [], 'id': [], 'pred': [], 'label': []}
-        @file_type: file type of bad case.
-        @data_type: test or dev in train-mode, not used in test-mode.
-        epoch: train epoch in train-mode, not used in test-mode.
-        """
-        dataframe = pd.DataFrame(items)
-        if file_type == 'excel':
-            bad_case_file = os.path.join(self.setting.result_dir, '{}-{}-{}-{}-{}.xlsx'.format(type_, self.now_time, data_type, epoch, self.output_result['result_type']))
-            dataframe.to_excel(bad_case_file, index=False)
-        elif file_type == 'csv':
-            bad_case_file = os.path.join(self.setting.result_dir, '{}-{}-{}-{}-{}.csv'.format(type_, self.now_time, data_type, epoch, self.output_result['result_type']))
-            dataframe.to_csv(bad_case_file, index=False)
-        else:
-            raise ValueError('Wrong file_type!')
-
-        self.logger.info('write {} to {}'.format(type_, bad_case_file))

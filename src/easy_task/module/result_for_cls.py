@@ -17,7 +17,8 @@ class ClassificationResult(BaseResult):
     """
     def __init__(self, task_name: str):
         super(ClassificationResult, self).__init__(task_name=task_name)
-        self.bad_case = {'text': [], 'id': [], 'pred': [], 'label': []}
+        self.bad_case = {'id': [], 'text': [], 'pred': [], 'label': []}
+        self.prediction = {'id': [], 'pred': []}
         
     def get_score(self) -> dict:
         """Calculate task specific score(custom).
@@ -26,16 +27,11 @@ class ClassificationResult(BaseResult):
         acc = self.accuracy
         prec = self.precision
         rec = self.recall
-        f1_score_1 = self.f1_score_1
-        f1_score_0 = self.f1_score_0
+        f1_score = self.f1_score
         macro_f1 = self.macro_f1_score
         micro_f1 = self.micro_f1_score
-        f_05 = self.f_05_score
-        if(self.prob):
-            auc = self.roc_auc
-            return {'accuracy': acc, 'precision': prec, 'recall': rec, 'f1_score': [f1_score_0, f1_score_1], 'auc': auc, 'f_05_score': f_05}
-        else:
-            return {'accuracy': acc, 'precision': prec, 'recall': rec, 'f1_score': [f1_score_0, f1_score_1], 'micro': micro_f1, 'macro': macro_f1}
+
+        return {'accuracy': acc, 'precision': prec, 'recall': rec, 'f1_score': f1_score, 'micro': micro_f1, 'macro': macro_f1}
         
 
     def update_batch(self, batch_results: list):
@@ -49,6 +45,12 @@ class ClassificationResult(BaseResult):
         self.pred += pred
         label = batch_labels.cpu().detach().numpy().tolist()
         self.label += label
+
+        # update prediction
+        assert len(pred) == len(label) == len(batch_features)
+        for _ in range(len(pred)):
+            self.prediction['id'].append(batch_features[_].doc_id)
+            self.prediction['pred'].append(pred[_])
 
         # update batch bad case
         assert len(pred) == len(label) == len(batch_features)

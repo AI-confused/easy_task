@@ -18,7 +18,7 @@ from module import *
 
 
 class SequenceTaggingTask(BasePytorchTask):
-    def __init__(self, task_setting: TaskSetting, load_train: bool=True, load_dev: bool=True, load_test: bool=True):
+    def __init__(self, task_setting: TaskSetting, load_train: bool=False, load_dev: bool=False, load_test: bool=False):
         """Custom Task definition class(custom).
 
         @task_setting: hyperparameters of Task.
@@ -62,6 +62,14 @@ class SequenceTaggingTask(BasePytorchTask):
         Can be overwriten.
         """
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=float(self.setting.learning_rate))
+
+
+    def prepare_result_class(self):
+        """Prepare result calculate class(custom).
+
+        Can be overwriten.
+        """
+        self.result = SequenceTaggingResult(task_name=self.setting.task_name, id2label=self.setting.id2label, max_seq_len=self.setting.max_seq_len)
 
 
     def load_examples_features(self, data_type: str, file_name: str, flag: bool) -> tuple:
@@ -229,12 +237,13 @@ class SequenceTaggingTask(BasePytorchTask):
                 examples = self.dev_examples
                 dataset = self.dev_dataset
 
-            # init Result class
-            self.result = SequenceTaggingResult(task_name=self.setting.task_name, id2label=self.setting.id2label, max_seq_len=self.setting.max_seq_len)
-
             # prepare data loader
             self.eval_dataloader = self._prepare_data_loader(dataset, self.setting.eval_batch_size, rand_flag=False, collate_fn=self.custom_collate_fn_eval)
 
+            # init result calculate class
+            self.prepare_result_class()
+
+            # do base eval
             self._base_eval(epoch, data_type, examples, features)
 
             # calculate result score
@@ -311,8 +320,8 @@ class SequenceTaggingTask(BasePytorchTask):
         return [input_ids, input_masks, segment_ids, labels, features]
 
 
-    def resume_eval_at(self, resume_model_name: str):
-        """Resume checkpoint and do eval(custom).
+    def resume_test_at(self, resume_model_name: str):
+        """Resume checkpoint and do test(custom).
 
         Can be overwriten, but with the same input parameters.
         
@@ -320,11 +329,11 @@ class SequenceTaggingTask(BasePytorchTask):
         """
         self.resume_checkpoint(cpt_file_name=resume_model_name, resume_model=True, resume_optimizer=False)
 
-        # init Result class
-        self.result = SequenceTaggingResult(task_name=self.setting.task_name)
-
         # prepare data loader
         self.eval_dataloader = self._prepare_data_loader(self.test_dataset, self.setting.eval_batch_size, rand_flag=False, collate_fn=self.custom_collate_fn_eval)
+
+        # init result calculate class
+        self.prepare_result_class()
 
         # do test
         self._base_eval(0, 'test', self.test_examples, self.test_features)

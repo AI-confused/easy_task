@@ -18,7 +18,7 @@ class SequenceTaggingResult(BaseResult):
     @id2label: id to label map dict.
     @max_seq_len: max sequence length of input feature.
     """
-    def __init__(self, task_name: str, id2label: dict, max_seq_len: int, output_dir: str=None):
+    def __init__(self, task_name: str, id2label: dict, max_seq_len: int):
         super(SequenceTaggingResult, self).__init__(task_name=task_name)
         self.bad_case = {'text': [], 'id': [], 'pred': [], 'label': []}
         self.all_result = {'text': [], 'id': [], 'pred': [], 'label': []}

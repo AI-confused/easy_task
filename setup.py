@@ -5,7 +5,7 @@ import setuptools
 
 setuptools.setup(
     name="easy_task",
-    version="0.0.9",
+    version="0.0.10",
     author="black_tears",
     author_email="21860437@zju.edu.cn",
     description="make you easy to build deeplearning task",

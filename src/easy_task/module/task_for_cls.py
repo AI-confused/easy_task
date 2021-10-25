@@ -18,7 +18,7 @@ from module import *
 
 
 class ClassificationTask(BasePytorchTask):
-    def __init__(self, task_setting: TaskSetting, load_train: bool=True, load_dev: bool=True, load_test: bool=True):
+    def __init__(self, task_setting: TaskSetting, load_train: bool=False, load_dev: bool=False, load_test: bool=False):
         """Custom Task definition class(custom).
 
         @task_setting: hyperparameters of Task.
@@ -50,7 +50,7 @@ class ClassificationTask(BasePytorchTask):
 
         Can be overwriten.
         """
-        self.tokenizer = BertTokenizer.from_pretrained(self.setting.bert_model)
+        self.tokenizer = BERTChineseCharacterTokenizer.from_pretrained(self.setting.bert_model)
         self.bert_config = BertConfig.from_pretrained(self.setting.bert_model, num_labels=self.setting.num_label)
         self.setting.vocab_size = len(self.tokenizer.vocab)
         self.model = BertForSequenceClassification.from_pretrained(self.setting.bert_model, config=self.bert_config)
@@ -62,6 +62,14 @@ class ClassificationTask(BasePytorchTask):
         Can be overwriten.
         """
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=float(self.setting.learning_rate))
+
+
+    def prepare_result_class(self):
+        """Prepare result calculate class(custom).
+
+        Can be overwriten.
+        """
+        self.result = ClassificationResult(task_name=self.setting.task_name)
 
 
     def load_examples_features(self, data_type: str, file_name: str, flag: bool) -> tuple:
@@ -213,12 +221,13 @@ class ClassificationTask(BasePytorchTask):
                 examples = self.dev_examples
                 dataset = self.dev_dataset
 
-            # init Result class
-            self.result = ClassificationResult(task_name=self.setting.task_name)
-
             # prepare data loader
             self.eval_dataloader = self._prepare_data_loader(dataset, self.setting.eval_batch_size, rand_flag=False, collate_fn=self.custom_collate_fn_eval)
 
+            # init result calculate class
+            self.prepare_result_class()
+
+            # do base eval
             self._base_eval(epoch, data_type, examples, features)
 
             # calculate result score
@@ -226,7 +235,7 @@ class ClassificationTask(BasePytorchTask):
             self.logger.info(score)
 
             # return bad case in train-mode
-            if self.setting.train_bad_case:
+            if self.setting.bad_case:
                 self.return_bad_case(data_type=data_type, epoch=epoch)
             
             # save each epoch result
@@ -292,8 +301,8 @@ class ClassificationTask(BasePytorchTask):
         return [input_ids, input_masks, segment_ids, labels, features]
 
 
-    def resume_eval_at(self, resume_model_name: str):
-        """Resume checkpoint and do eval(custom).
+    def resume_test_at(self, resume_model_name: str):
+        """Resume checkpoint and do test(custom).
 
         Can be overwriten, but with the same input parameters.
         
@@ -301,11 +310,11 @@ class ClassificationTask(BasePytorchTask):
         """
         self.resume_checkpoint(cpt_file_name=resume_model_name, resume_model=True, resume_optimizer=False)
 
-        # init Result class
-        self.result = ClassificationResult(task_name=self.setting.task_name)
-
         # prepare data loader
         self.eval_dataloader = self._prepare_data_loader(self.test_dataset, self.setting.eval_batch_size, rand_flag=False, collate_fn=self.custom_collate_fn_eval)
+
+        # init result calculate class
+        self.prepare_result_class()
 
         # do test
         self._base_eval(0, 'test', self.test_examples, self.test_features)
@@ -321,7 +330,7 @@ class ClassificationTask(BasePytorchTask):
         self.write_results()
 
         # write bad case
-        if self.setting.test_bad_case:
+        if self.setting.bad_case:
             self.return_bad_case()
     
 

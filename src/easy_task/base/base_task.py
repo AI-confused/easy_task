@@ -214,6 +214,10 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
                                     batch_size=batch_size,
                                     sampler=data_sampler,
                                     collate_fn=collate_fn)
+        else:
+            dataloader = DataLoader(dataset,
+                                    batch_size=batch_size,
+                                    sampler=data_sampler)
 
         return dataloader
 
@@ -253,26 +257,6 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
             self.logger.info('test examples: {}, features: {} at max_sequence_len: {}'.format(len(self.test_examples), len(self.test_features), self.setting.max_seq_len))
         else:
             self.logger.info('Do not load test portion')    
-
-
-    def custom_collate_fn_train(self, examples: list) -> list:
-        """Convert batch training examples into batch tensor.
-
-        Should be writen by inherit class.
-
-        @examples(InputFeature): /
-        """
-        pass
-
-
-    def custom_collate_fn_eval(self, examples: list) -> list:
-        """Convert batch eval examples into batch tensor.
-
-        Should be writen by inherit class.
-
-        @examples(InputFeature): /
-        """
-        pass
 
 
     def _base_train(self, **kwargs):
@@ -447,9 +431,29 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
             self.logger.info('Do not resume optimizer')
 
 
+    def custom_collate_fn_train(self, examples: list) -> list:
+        """Convert batch training examples into batch tensor.
+
+        Should be writen by inherit class.
+
+        @examples(InputFeature): /
+        """
+        pass
+
+
+    def custom_collate_fn_eval(self, examples: list) -> list:
+        """Convert batch eval examples into batch tensor.
+
+        Should be writen by inherit class.
+
+        @examples(InputFeature): /
+        """
+        pass
+
+
     @abc.abstractclassmethod
     def prepare_task_model(self):
-        """Prepare classification task model.
+        """Prepare task model.
 
         Must be writen by inherit class.
         """
@@ -458,7 +462,16 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
 
     @abc.abstractclassmethod
     def prepare_optimizer(self):
-        """repare ner task optimizer(custom).
+        """repare task optimizer(custom).
+
+        Must be writen by inherit class.
+        """
+        pass
+
+
+    @abc.abstractclassmethod
+    def prepare_result_class(self):
+        """repare task result calculate class(custom).
 
         Must be writen by inherit class.
         """
@@ -470,6 +483,24 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         """Write results to output file.
 
         Must be writen by inherit class.
+        """
+        pass
+
+
+    @abc.abstractclassmethod
+    def train(self, **kwargs):
+        """Train function for inherit class.
+
+        Must be writen by inherit class
+        """
+        pass
+
+
+    @abc.abstractclassmethod
+    def eval(self, **kwargs):
+        """Eval function for inherit class.
+
+        Must be writen by inherit class
         """
         pass
 
@@ -493,8 +524,8 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
 
 
     @abc.abstractclassmethod
-    def resume_eval_at(self, **kwargs):
-        """Resume checkpoint and do eval.
+    def resume_test_at(self, **kwargs):
+        """Resume checkpoint and do test.
 
         Must be writen by inherit class.
         """

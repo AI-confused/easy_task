@@ -36,4 +36,4 @@ if __name__ == '__main__':
         task.logger.info('Start evaling')
 
         # load checkpoint and do eval
-        task.resume_eval_at(task.setting.resume_model_name)
+        task.resume_test_at(task.setting.resume_model_name)

@@ -165,7 +165,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         for fn in os.listdir(self.setting.model_dir):
             if fn.startswith('{}.cpt'.format(self.setting.task_name)):
                 try:
-                    epoch = int(fn.split('.')[-1])
+                    epoch = int(fn.split('.')[-5])
                     if epoch > 0:
                         prev_epochs.append(epoch)
                 except Exception as e:

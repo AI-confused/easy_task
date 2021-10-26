@@ -19,7 +19,8 @@ import torch
 import tqdm
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 import torch.nn.parallel as para
-from base.base_setting import TaskSetting
+from base.base_setting import *
+from base.base_utils import *
 
 
 class BasePytorchTask(metaclass=abc.ABCMeta):
@@ -236,7 +237,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         #load train portion
         if load_train:
             self.logger.info('Load train portion')
-            self.train_examples, self.train_features, self.train_dataset, self.setting.max_seq_len = self.load_examples_features('train', self.setting.train_file_name, 1)
+            self.train_examples, self.train_features, self.train_dataset, self.setting.max_seq_len = self.load_examples_features('train', self.setting.train_file_name)
             self.logger.info('Load train portion done')
             self.logger.info('training examples: {}, features: {} at max_sequence_len: {}'.format(len(self.train_examples), len(self.train_features), self.setting.max_seq_len))
         else:
@@ -245,7 +246,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         # load dev portion
         if load_dev:
             self.logger.info('Load dev portion')
-            self.dev_examples, self.dev_features, self.dev_dataset, self.setting.max_seq_len = self.load_examples_features('dev', self.setting.dev_file_name, 0)
+            self.dev_examples, self.dev_features, self.dev_dataset, self.setting.max_seq_len = self.load_examples_features('dev', self.setting.dev_file_name)
             self.logger.info('Load dev portion done!')
             self.logger.info('dev examples: {}, features: {} at max_sequence_len: {}'.format(len(self.dev_examples), len(self.dev_features), self.setting.max_seq_len))
         else:
@@ -254,7 +255,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         # load test portion
         if load_test:
             self.logger.info('Load test portion')
-            self.test_examples, self.test_features, self.test_dataset, self.setting.max_seq_len = self.load_examples_features('test', self.setting.test_file_name, 0)
+            self.test_examples, self.test_features, self.test_dataset, self.setting.max_seq_len = self.load_examples_features('test', self.setting.test_file_name)
             self.logger.info('Load test portion done!')
             self.logger.info('test examples: {}, features: {} at max_sequence_len: {}'.format(len(self.test_examples), len(self.test_features), self.setting.max_seq_len))
         else:
@@ -459,6 +460,27 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         self.logger.info('write {} to {}'.format(type_, bad_case_file))
 
 
+    def write_results(self):
+        """Write results to output file.
+
+        Can be overwriten.
+        """
+        result_file = os.path.join(self.setting.result_dir, 'result-{}-{}.json'.format(self.now_time, self.output_result['result_type']))
+
+        # add result_type: train or test
+        BaseUtils.write_lines(file_path=result_file, content=[self.output_result['result_type']], write_type='w')
+        BaseUtils.write_lines(file_path=result_file, content=['*'*40])
+
+        # add task configuration
+        for key, value in self.output_result['task_config'].items():
+            BaseUtils.write_lines(file_path=result_file, content=['{}: {}'.format(key, value)])
+        BaseUtils.write_lines(file_path=result_file, content=['*'*40])
+
+        # add each epoch eval result or test result
+        BaseUtils.write_lines(file_path=result_file, content=self.output_result['result'])
+        self.logger.info('write results to {}'.format(result_file))
+
+
     def custom_collate_fn_train(self, examples: list) -> list:
         """Convert batch training examples into batch tensor.
 
@@ -500,15 +522,6 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
     @abc.abstractclassmethod
     def prepare_result_class(self):
         """repare task result calculate class(custom).
-
-        Must be writen by inherit class.
-        """
-        pass
-
-
-    @abc.abstractclassmethod
-    def write_results(self, **kwargs):
-        """Write results to output file.
 
         Must be writen by inherit class.
         """

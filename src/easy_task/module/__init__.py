@@ -12,3 +12,4 @@ from .task_for_cls import *
 from .task_for_ner import *
 from .model_for_ner import *
 from .result_for_ner import *
+from .result_for_event import *

@@ -13,8 +13,9 @@ import tqdm
 import torch
 import pandas as pd
 from transformers import BertConfig, BertTokenizer
-from base import *
-from module import *
+from base.base_task import *
+from module.result_for_ner import *
+from module.model_for_ner import *
 
 
 class SequenceTaggingTask(BasePytorchTask):
@@ -90,11 +91,11 @@ class SequenceTaggingTask(BasePytorchTask):
             features = torch.load(cached_features_file1)
         else:
             examples = self.read_examples(os.path.join(self.setting.data_dir, file_name), percent=self.setting.percent)
+            torch.save(examples, cached_features_file0)
             features = self.convert_examples_to_features(examples,
                                                         tokenizer=self.tokenizer,
                                                         max_seq_len=self.setting.max_seq_len)
  
-            torch.save(examples, cached_features_file0)
             torch.save(features, cached_features_file1)
         dataset = TextDataset(features)
         return (examples, features, dataset, features[0].max_seq_len)
@@ -113,8 +114,10 @@ class SequenceTaggingTask(BasePytorchTask):
         data = pd.read_csv(input_file)
             
         if percent != 1.0:
-            data = data.sample(frac=percent, random_state=0)
-        for i in data.index:
+            data = data.sample(frac=percent, random_state=self.setting.seed)
+            data = data.reset_index(drop=True)
+
+        for i in tqdm.tqdm(data.index, desc='read examples'):
             text = data.iloc[i]['text']
             doc_id = data.iloc[i]['id']
             try: 
@@ -138,7 +141,7 @@ class SequenceTaggingTask(BasePytorchTask):
         @max_seq_len: max length of tokenized text
         """
         features = []
-        for _ in tqdm.tqdm(range(len(examples)), total=len(examples)):
+        for _ in tqdm.tqdm(range(len(examples)), total=len(examples), desc='convert features'):
             example = examples[_]
 
             if example.label is not None:
@@ -233,7 +236,8 @@ class SequenceTaggingTask(BasePytorchTask):
             raise ValueError('resume_base_epoch and resume_model_path can not be together!')
         elif resume_model_path is not None:
             self.logger.info('Training starts from other model: {}'.format(resume_model_path))
-            self.resume_checkpoint(cpt_file_file=resume_model_path, resume_model=True, resume_optimizer=True)
+            self.resume_checkpoint(cpt_file_path=resume_model_path, resume_model=True, resume_optimizer=True)
+            resume_base_epoch = 0
         else:
             if resume_base_epoch is None:
                 if self.setting.resume_latest_cpt:
@@ -302,17 +306,19 @@ class SequenceTaggingTask(BasePytorchTask):
                                                 .format(data_type, epoch, self.train_loss, json.dumps(score, ensure_ascii=False)))
 
             # save best model with specific standard(custom)
-            if data_type == 'dev' and score['micro_f1'] > self.best_dev_score:
+            if data_type == 'dev' and score[self.setting.evaluation_metric] > self.best_dev_score:
                 self.best_dev_epoch = epoch
-                self.best_dev_score = score['micro_f1']
+                self.best_dev_score = score[self.setting.evaluation_metric]
                 self.logger.info('saving best dev model...')
-                self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}'.format(self.setting.task_name, data_type, 0))
+                self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}.e{}.b{}.p{}.s{}'.format(\
+                    self.setting.task_name, data_type, 0, self.setting.num_train_epochs, self.setting.train_batch_size, self.setting.percent, self.setting.seed))
 
-            if data_type == 'test' and score['micro_f1'] > self.best_test_score:
+            if data_type == 'test' and score[self.setting.evaluation_metric] > self.best_test_score:
                 self.best_test_epoch = epoch
-                self.best_test_score = score['micro_f1']
+                self.best_test_score = score[self.setting.evaluation_metric]
                 self.logger.info('saving best test model...')
-                self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}'.format(self.setting.task_name, data_type, 0))
+                self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}.e{}.b{}.p{}.s{}'.format(\
+                    self.setting.task_name, data_type, 0, self.setting.num_train_epochs, self.setting.train_batch_size, self.setting.percent, self.setting.seed))
                 
             if self.setting.save_cpt_flag == 1:
                 # save last epoch
@@ -325,11 +331,13 @@ class SequenceTaggingTask(BasePytorchTask):
                     else:
                         self.logger.info("{} does not exist".format(delete_cpt_file), level=logging.WARNING)
                 self.logger.info('saving latest epoch model...')
-                self.save_checkpoint(cpt_file_name='{}.cpt.{}'.format(self.setting.task_name, epoch))
+                self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}.e{}.b{}.p{}.s{}'.format(\
+                    self.setting.task_name, data_type, epoch, self.setting.num_train_epochs, self.setting.train_batch_size, self.setting.percent, self.setting.seed))
             elif self.setting.save_cpt_flag == 2:
                 # save each epoch
                 self.logger.info('saving epoch {} model...'.format(epoch))
-                self.save_checkpoint(cpt_file_name='{}.cpt.{}'.format(self.setting.task_name, epoch))
+                self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}.e{}.b{}.p{}.s{}'.format(\
+                    self.setting.task_name, data_type, epoch, self.setting.num_train_epochs, self.setting.train_batch_size, self.setting.percent, self.setting.seed))
 
 
     def custom_collate_fn_train(self, features: list) -> list:
@@ -362,14 +370,14 @@ class SequenceTaggingTask(BasePytorchTask):
         return [input_ids, input_masks, segment_ids, labels, features]
 
 
-    def resume_test_at(self, resume_model_name: str):
+    def resume_test_at(self, resume_model_path: str):
         """Resume checkpoint and do test(custom).
 
         Can be overwriten, but with the same input parameters.
         
-        @resume_model_dir: do test model name
+        @resume_model_path: do test model path
         """
-        self.resume_checkpoint(cpt_file_name=resume_model_name, resume_model=True, resume_optimizer=False)
+        self.resume_checkpoint(cpt_file_path=resume_model_path, resume_model=True, resume_optimizer=False)
 
         # prepare data loader
         self.eval_dataloader = self._prepare_data_loader(self.test_dataset, self.setting.eval_batch_size, rand_flag=False, collate_fn=self.custom_collate_fn_eval)
@@ -408,23 +416,3 @@ class SequenceTaggingTask(BasePytorchTask):
         loss = self.model(input_ids=input_ids, token_type_ids=segment_ids, attention_mask=input_masks, labels=labels)
         return loss
 
-
-    def write_results(self):
-        """Write results to output file.
-
-        Can be overwriten.
-        """
-        result_file = os.path.join(self.setting.result_dir, 'result-{}-{}.json'.format(self.now_time, self.output_result['result_type']))
-
-        # add result_type: train or test
-        BaseUtils.write_lines(file_path=result_file, content=[self.output_result['result_type']], write_type='w')
-        BaseUtils.write_lines(file_path=result_file, content=['*'*40])
-
-        # add task configuration
-        for key, value in self.output_result['task_config'].items():
-            BaseUtils.write_lines(file_path=result_file, content=['{}: {}'.format(key, value)])
-        BaseUtils.write_lines(file_path=result_file, content=['*'*40])
-
-        # add each epoch eval result or test result
-        BaseUtils.write_lines(file_path=result_file, content=self.output_result['result'])
-        self.logger.info('write results to {}'.format(result_file))

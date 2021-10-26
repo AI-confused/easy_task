@@ -4,20 +4,20 @@ exp_dir: '/mnt/data/github/easy_task/output'
 task_name: 'classification_parallelism'
 skip_train: False
 bert_model: '/mnt/data/github/easy_task/pretrained_model/chinese_wwm_ext_pytorch'
-resume_model_name: '/mnt/data/github/easy_task/output/classification_parallelism/Model/classification_parallelism.cpt.test.0'
+resume_model_path: '/mnt/data/github/easy_task/output/classification_parallelism/Model/classification_parallelism.cpt.test.0'
 train_file_name: 'train.json'
 dev_file_name: 'dev.json'
 test_file_name: 'test.json'
 eval_file:
   - 'dev'
   - 'test'
+evaluation_metric: 'accuracy'
 num_label: 2
 max_seq_len: 160
 train_batch_size: 128
 eval_batch_size: 256
 learning_rate: 1e-6
 num_train_epochs: 10
-warmup_proportion: 0.1
 no_cuda: False
 # specify the GPU number
 cuda_device: '1'
@@ -25,7 +25,6 @@ seed: 99
 gradient_accumulation_steps: 1
 over_write_cache: False
 resume_latest_cpt: False
-optimize_on_cpu: False
 bad_case: True
 # save_cpt_flag value: {0: only save best model; 1: save best model & last epoch model; 2: save best model & each epoch model}
 save_cpt_flag: 0

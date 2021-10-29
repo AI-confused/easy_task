@@ -269,14 +269,14 @@ class ClassificationTask(BasePytorchTask):
                 self.best_dev_score = score[self.setting.evaluation_metric]
                 self.logger.info('saving best dev model...')
                 self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}.e{}.b{}.p{}.s{}'.format(\
-                    self.setting.task_name, data_type, 0, self.setting.num_train_epochs, self.setting.train_batch_size, self.setting.percent, self.setting.seed))
+                    self.setting.task_name, data_type, 0, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','|'), self.setting.seed))
 
             if data_type == 'test' and score[self.setting.evaluation_metric] > self.best_test_score:
                 self.best_test_epoch = epoch
                 self.best_test_score = score[self.setting.evaluation_metric]
                 self.logger.info('saving best test model...')
                 self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}.e{}.b{}.p{}.s{}'.format(\
-                    self.setting.task_name, data_type, 0, self.setting.num_train_epochs, self.setting.train_batch_size, self.setting.percent, self.setting.seed))
+                    self.setting.task_name, data_type, 0, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','|'), self.setting.seed))
                 
             save_cpt_file = '{}.cpt.{}.e({}).b({}).p({}).s({})'.format(\
                     self.setting.task_name, epoch, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','|'), self.setting.seed)
@@ -335,13 +335,16 @@ class ClassificationTask(BasePytorchTask):
         return [input_ids, input_masks, segment_ids, labels, features]
 
 
-    def resume_test_at(self, resume_model_path: str):
+    def resume_test_at(self, resume_model_path: str, **kwargs):
         """Resume checkpoint and do test(custom).
 
         Can be overwriten, but with the same input parameters.
         
         @resume_model_path: do test model name
         """
+        # extract kwargs
+        header = kwargs.pop("header", True)
+
         self.resume_checkpoint(cpt_file_path=resume_model_path, resume_model=True, resume_optimizer=False)
 
         # prepare data loader
@@ -354,7 +357,7 @@ class ClassificationTask(BasePytorchTask):
         self._base_eval(0, 'test', self.test_examples, self.test_features)
 
         # output test prediction
-        self.return_selected_case(type_='prediction', items=self.result.prediction, file_type='csv', data_type='test')
+        self.return_selected_case(type_='prediction', items=self.result.prediction, file_type='csv', data_type='test', header=header)
 
 
     def get_result_on_batch(self, batch: tuple):

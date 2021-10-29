@@ -311,14 +311,14 @@ class SequenceTaggingTask(BasePytorchTask):
                 self.best_dev_score = score[self.setting.evaluation_metric]
                 self.logger.info('saving best dev model...')
                 self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}.e{}.b{}.p{}.s{}'.format(\
-                    self.setting.task_name, data_type, 0, self.setting.num_train_epochs, self.setting.train_batch_size, self.setting.percent, self.setting.seed))
+                    self.setting.task_name, data_type, 0, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','|'), self.setting.seed))
 
             if data_type == 'test' and score[self.setting.evaluation_metric] > self.best_test_score:
                 self.best_test_epoch = epoch
                 self.best_test_score = score[self.setting.evaluation_metric]
                 self.logger.info('saving best test model...')
                 self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}.e{}.b{}.p{}.s{}'.format(\
-                    self.setting.task_name, data_type, 0, self.setting.num_train_epochs, self.setting.train_batch_size, self.setting.percent, self.setting.seed))
+                    self.setting.task_name, data_type, 0, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','|'), self.setting.seed))
                 
             save_cpt_file = '{}.cpt.{}.e({}).b({}).p({}).s({})'.format(\
                     self.setting.task_name, epoch, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','|'), self.setting.seed)
@@ -377,13 +377,16 @@ class SequenceTaggingTask(BasePytorchTask):
         return [input_ids, input_masks, segment_ids, labels, features]
 
 
-    def resume_test_at(self, resume_model_path: str):
+    def resume_test_at(self, resume_model_path: str, **kwargs):
         """Resume checkpoint and do test(custom).
 
         Can be overwriten, but with the same input parameters.
         
         @resume_model_path: do test model path
         """
+        # extract kwargs
+        header = kwargs.pop("header", None)
+
         self.resume_checkpoint(cpt_file_path=resume_model_path, resume_model=True, resume_optimizer=False)
 
         # prepare data loader
@@ -397,7 +400,7 @@ class SequenceTaggingTask(BasePytorchTask):
 
         # output test prediction
         self.result.get_prediction()
-        self.return_selected_case(type_='test_prediction', items=self.result.all_result)
+        self.return_selected_case(type_='test_prediction', items=self.result.all_result, header=header)
     
 
     def get_result_on_batch(self, batch: tuple):

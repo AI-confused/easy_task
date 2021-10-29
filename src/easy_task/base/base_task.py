@@ -436,7 +436,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
             self.logger.info('Do not resume optimizer')
 
 
-    def return_selected_case(self, type_: str, items: dict, file_type: str='excel', data_type: str='', epoch=''):
+    def return_selected_case(self, type_: str, items: dict, **kwargs):
         """Return eval selected case and dump to file.
 
         Can be overwriten.
@@ -446,14 +446,21 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         @file_type: file type of bad case.
         @data_type: dev or test.
         @epoch: train epoch in train-mode, not used in test-mode.
+        @header: pandas dump to file whether has columns.
         """
+        # extract kwargs
+        file_type = kwargs.pop('file_type', 'excel')
+        data_type = kwargs.pop('data_type', '')
+        epoch = kwargs.pop('epoch', '')
+        header = kwargs.pop('header', True)
+
         dataframe = pd.DataFrame(items)
         if file_type == 'excel':
             bad_case_file = os.path.join(self.setting.result_dir, '{}-{}-{}-{}-{}.xlsx'.format(type_, self.now_time, data_type, epoch, self.output_result['result_type']))
-            dataframe.to_excel(bad_case_file, index=False)
+            dataframe.to_excel(bad_case_file, index=False, header=header)
         elif file_type == 'csv':
             bad_case_file = os.path.join(self.setting.result_dir, '{}-{}-{}-{}-{}.csv'.format(type_, self.now_time, data_type, epoch, self.output_result['result_type']))
-            dataframe.to_csv(bad_case_file, index=False)
+            dataframe.to_csv(bad_case_file, index=False, header=header)
         else:
             raise ValueError('Wrong file_type!')
 

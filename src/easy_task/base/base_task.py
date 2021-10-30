@@ -58,6 +58,8 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         self.best_dev_score = None
         self.best_test_score = None
         self.output_result = None
+        self.eval_best_loss = float(np.inf)
+        self.early_stop_flag = 0
 
 
     def __set_basic_log_config(self):
@@ -265,7 +267,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
     def _base_train(self, **kwargs):
         """Base task train func with a set of parameters.
 
-        This class should not be rewriten.
+        This class should not be rewritten.
         
         @kwargs: base_epoch_idx
         """
@@ -306,21 +308,25 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
                 tr_loss += loss_scalar
                 self.train_loss = round(tr_loss * self.setting.gradient_accumulation_steps / (nb_tr_steps+1), 4)
                 bar.set_description('loss {}'.format(self.train_loss))
-
                 nb_tr_examples += self.setting.train_batch_size
                 nb_tr_steps += 1
+
                 if (step + 1) % self.setting.gradient_accumulation_steps == 0:
                     self.optimizer.step()
                     self.model.zero_grad()
                     global_step += 1
-
+            # do epoch eval
             self.eval(epoch_idx + 1)
+            # do early stop
+            if self.setting.do_early_stop and self.early_stopping():
+                self.logger.info('='*20 + 'Early Stop Base Training' + '='*20)
+                break
 
 
     def _base_eval(self, epoch: int, data_type: str, eval_examples: list, eval_features: list, **kwargs):
         """Base task eval func with a set of parameters.
 
-        This class should not be rewriten.
+        This class should not be rewritten.
 
         @epoch: eval epoch
         @data_type: 'dev' or 'test'
@@ -338,12 +344,40 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         self.model.eval()
 
         # do eval
+        eval_steps, eval_loss = 0, 0.0
         for batch in tqdm.tqdm(self.eval_dataloader, desc='Iteration'):
             batch = self.__set_batch_to_device(batch)
 
             with torch.no_grad():
+                batch_eval_loss = self.get_loss_on_batch(batch)
                 batch_results = self.get_result_on_batch(batch)
                 self.result.update_batch(batch_results=batch_results)
+
+            if self.n_gpu > 1:
+                # mean() to average on multi-gpu.
+                batch_eval_loss = batch_eval_loss.mean()  
+            if self.setting.gradient_accumulation_steps > 1:
+                batch_eval_loss = batch_eval_loss / self.setting.gradient_accumulation_steps
+
+            eval_loss += batch_eval_loss.item()
+            eval_steps += 1
+        # calculate epoch eval loss
+        self.eval_loss = eval_loss / eval_steps
+        self.logger.info("\tEpoch Eval Loss = {}".format(self.eval_loss))
+
+
+    def early_stopping(self):
+        """Do early stop during epoch training.
+        """
+        if self.eval_loss < self.eval_best_loss:
+            self.early_stop_flag = 0
+            self.eval_best_loss = self.eval_loss
+        else:
+            self.early_stop_flag += 1
+            # stop training
+            if self.early_stop_flag == 2:
+                return 1
+        return 0
 
 
     def save_checkpoint(self, cpt_file_name: str=None, epoch: int=None):
@@ -439,7 +473,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
     def return_selected_case(self, type_: str, items: dict, **kwargs):
         """Return eval selected case and dump to file.
 
-        Can be overwriten.
+        Can be overwritten.
 
         @type_: bad_case or prediction.
         @items: {'text': [], 'id': [], 'pred': [], 'label': []}
@@ -470,7 +504,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
     def write_results(self):
         """Write results to output file.
 
-        Can be overwriten.
+        Can be overwritten.
         """
         result_file = os.path.join(self.setting.result_dir, 'result-{}-{}.json'.format(self.now_time, self.output_result['result_type']))
 
@@ -491,7 +525,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
     def custom_collate_fn_train(self, examples: list) -> list:
         """Convert batch training examples into batch tensor.
 
-        Should be writen by inherit class.
+        Should be written by inherit class.
 
         @examples(InputFeature): /
         """
@@ -501,7 +535,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
     def custom_collate_fn_eval(self, examples: list) -> list:
         """Convert batch eval examples into batch tensor.
 
-        Should be writen by inherit class.
+        Should be written by inherit class.
 
         @examples(InputFeature): /
         """
@@ -512,7 +546,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
     def prepare_task_model(self):
         """Prepare task model.
 
-        Must be writen by inherit class.
+        Must be written by inherit class.
         """
         pass
 
@@ -521,7 +555,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
     def prepare_optimizer(self):
         """repare task optimizer(custom).
 
-        Must be writen by inherit class.
+        Must be written by inherit class.
         """
         pass
 
@@ -530,7 +564,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
     def prepare_result_class(self):
         """repare task result calculate class(custom).
 
-        Must be writen by inherit class.
+        Must be written by inherit class.
         """
         pass
 
@@ -539,7 +573,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
     def train(self, **kwargs):
         """Train function for inherit class.
 
-        Must be writen by inherit class
+        Must be written by inherit class
         """
         pass
 
@@ -548,7 +582,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
     def eval(self, **kwargs):
         """Eval function for inherit class.
 
-        Must be writen by inherit class
+        Must be written by inherit class
         """
         pass
 
@@ -557,7 +591,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
     def get_loss_on_batch(self, **kwargs):
         """Return batch loss during training model.
 
-        Must be writen by inherit class.
+        Must be written by inherit class.
         """
         pass
 
@@ -566,7 +600,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
     def get_result_on_batch(self, **kwargs):
         """Return batch output logits during eval model.
 
-        Must be writen by inherit class.
+        Must be written by inherit class.
         """
         pass
 
@@ -575,7 +609,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
     def resume_test_at(self, **kwargs):
         """Resume checkpoint and do test.
 
-        Must be writen by inherit class.
+        Must be written by inherit class.
         """
         pass
 
@@ -584,7 +618,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
     def load_examples_features(self, **kwargs) -> tuple:
         """Load examples, features and dataset.
         
-        Must be writen by inherit class.
+        Must be written by inherit class.
         """
         pass
 
@@ -593,7 +627,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
     def read_examples(self, **kwargs) -> list:
         """Read data from a data file and generate list of InputExamples.
 
-        Must be writen by inherit class.
+        Must be written by inherit class.
         """
         pass
 
@@ -602,6 +636,6 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
     def convert_examples_to_features(self, **kwargs) -> list:
         """Process the InputExamples into InputFeatures that can be fed into the model.
 
-        Must be writen by inherit class.
+        Must be written by inherit class.
         """
         pass

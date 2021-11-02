@@ -1,23 +1,25 @@
 # classification task setting parameters
 data_dir: '/mnt/data/github/easy_task/dataset/parallelism/'
 exp_dir: '/mnt/data/github/easy_task/output'
-task_name: 'classification_parallelism'
+task_name: 'classification_parallelism_test'
 skip_train: False
 bert_model: '/mnt/data/github/easy_task/pretrained_model/chinese_wwm_ext_pytorch'
-resume_model_path: '/mnt/data/github/easy_task/output/classification_parallelism/Model/classification_parallelism.cpt.test.0'
+# resume_model_path: '/mnt/data/github/easy_task/output/classification_parallelism/Model/classification_parallelism.cpt.test.0'
 train_file_name: 'train.json'
 dev_file_name: 'dev.json'
+load_test: 0
 test_file_name: 'test.json'
 eval_file:
   - 'dev'
-  - 'test'
+  # - 'test'
 evaluation_metric: 'accuracy'
+do_early_stop: 1
 num_label: 2
 max_seq_len: 160
 train_batch_size: 128
 eval_batch_size: 256
 learning_rate: 1e-6
-num_train_epochs: 10
+num_train_epochs: 20
 no_cuda: False
 # specify the GPU number
 cuda_device: '1'

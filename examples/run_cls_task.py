@@ -23,7 +23,7 @@ if __name__ == '__main__':
     task_setting = TaskSetting(task_utils.task_configuration)
 
     # build custom task
-    task = ClassificationTask(task_setting, load_train=not task_setting.skip_train, load_dev=not task_setting.skip_train)
+    task = ClassificationTask(task_setting, load_train=not task_setting.skip_train, load_dev=not task_setting.skip_train, load_test=task_setting.load_test)
 
     # do train
     if not task_setting.skip_train:

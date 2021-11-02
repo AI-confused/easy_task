@@ -310,25 +310,25 @@ class SequenceTaggingTask(BasePytorchTask):
                 self.best_dev_epoch = epoch
                 self.best_dev_score = score[self.setting.evaluation_metric]
                 self.logger.info('saving best dev model...')
-                self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}.e{}.b{}.p{}.s{}'.format(\
-                    self.setting.task_name, data_type, 0, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','|'), self.setting.seed))
+                self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}.e({}).b({}).p({}).s({})'.format(\
+                    self.setting.task_name, data_type, 0, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','。'), self.setting.seed))
 
             if data_type == 'test' and score[self.setting.evaluation_metric] > self.best_test_score:
                 self.best_test_epoch = epoch
                 self.best_test_score = score[self.setting.evaluation_metric]
                 self.logger.info('saving best test model...')
-                self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}.e{}.b{}.p{}.s{}'.format(\
-                    self.setting.task_name, data_type, 0, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','|'), self.setting.seed))
+                self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}.e({}).b({}).p({}).s({})'.format(\
+                    self.setting.task_name, data_type, 0, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','。'), self.setting.seed))
                 
             save_cpt_file = '{}.cpt.{}.e({}).b({}).p({}).s({})'.format(\
-                    self.setting.task_name, epoch, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','|'), self.setting.seed)
+                    self.setting.task_name, epoch, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','。'), self.setting.seed)
             if self.setting.save_cpt_flag == 1 and not os.path.exists(os.path.join(self.setting.model_dir, save_cpt_file)):
                 # save last epoch
                 last_epoch = self.get_latest_cpt_epoch()
                 if last_epoch != 0:
                     # delete lastest epoch model and store this epoch
                     delete_cpt_file = '{}.cpt.{}.e({}).b({}).p({}).s({})'.format(\
-                        self.setting.task_name, last_epoch, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','|'), self.setting.seed)
+                        self.setting.task_name, last_epoch, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','。'), self.setting.seed)
 
                     if os.path.exists(os.path.join(self.setting.model_dir, delete_cpt_file)):
                         os.remove(os.path.join(self.setting.model_dir, delete_cpt_file))
@@ -338,13 +338,13 @@ class SequenceTaggingTask(BasePytorchTask):
 
                 self.logger.info('saving latest epoch model...')
                 self.save_checkpoint(cpt_file_name='{}.cpt.{}.e({}).b({}).p({}).s({})'.format(\
-                    self.setting.task_name, epoch, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','|'), self.setting.seed))
+                    self.setting.task_name, epoch, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','。'), self.setting.seed))
 
             elif self.setting.save_cpt_flag == 2 and not os.path.exists(os.path.join(self.setting.model_dir, save_cpt_file)):
                 # save each epoch
                 self.logger.info('saving epoch {} model...'.format(epoch))
                 self.save_checkpoint(cpt_file_name='{}.cpt.{}.e({}).b({}).p({}).s({})'.format(\
-                    self.setting.task_name, epoch, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','|'), self.setting.seed))
+                    self.setting.task_name, epoch, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','。'), self.setting.seed))
 
 
     def custom_collate_fn_train(self, features: list) -> list:

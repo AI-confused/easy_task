@@ -58,7 +58,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         self.best_dev_score = None
         self.best_test_score = None
         self.output_result = None
-        self.eval_best_loss = float(np.inf)
+        self.eval_best_loss = 1000
         self.early_stop_flag = 0
 
 
@@ -377,6 +377,9 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
             # stop training
             if self.early_stop_flag == 2:
                 return 1
+            # update learning rate of parameters of model
+            for params in self.optimizer.param_groups:  
+                params['lr'] *= 0.5
         return 0
 
 

@@ -253,14 +253,14 @@ class EventExtractionTask(SequenceTaggingTask):
                 self.best_dev_epoch = epoch
                 self.best_dev_score = score[self.setting.evaluation_metric]
                 self.logger.info('saving best dev model...')
-                self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}.e{}.b{}.p{}.s{}'.format(\
+                self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}.e({}).b({}).p({}).s({})'.format(\
                     self.setting.task_name, data_type, 0, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','|'), self.setting.seed))
 
             if data_type == 'test' and score[self.setting.evaluation_metric] > self.best_test_score:
                 self.best_test_epoch = epoch
                 self.best_test_score = score[self.setting.evaluation_metric]
                 self.logger.info('saving best test model...')
-                self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}.e{}.b{}.p{}.s{}'.format(\
+                self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}.e({}).b({}).p({}).s({})'.format(\
                     self.setting.task_name, data_type, 0, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','|'), self.setting.seed))
                 
             save_cpt_file = '{}.cpt.{}.e({}).b({}).p({}).s({})'.format(\

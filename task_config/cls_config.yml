@@ -9,9 +9,6 @@ train_file_name: 'train.json'
 dev_file_name: 'dev.json'
 load_test: 0
 test_file_name: 'test.json'
-eval_file:
-  - 'dev'
-  # - 'test'
 evaluation_metric: 'accuracy'
 do_early_stop: 1
 num_label: 2

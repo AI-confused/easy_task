@@ -8,9 +8,6 @@ bert_model: '/mnt/data/github/easy_task/pretrained_model/chinese_roberta_wwm_lar
 train_file_name: 'train.csv'
 dev_file_name: 'dev.csv'
 test_file_name: 'test.csv'
-eval_file:
-  - 'dev'
-  - 'test'
 evaluation_metric: 'micro_f1'
 num_label: 9
 max_seq_len: 256

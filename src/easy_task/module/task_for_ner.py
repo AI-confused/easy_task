@@ -271,80 +271,75 @@ class SequenceTaggingTask(BasePytorchTask):
 
         @epoch(int): eval epoch
         """        
-        for data_type in self.setting.eval_file:
-            if data_type == 'test':
-                features = self.test_features
-                examples = self.test_examples
-                dataset = self.test_dataset
-            elif data_type == 'dev':
-                features = self.dev_features
-                examples = self.dev_examples
-                dataset = self.dev_dataset
+        data_type = 'dev'
+        features = self.dev_features
+        examples = self.dev_examples
+        dataset = self.dev_dataset
 
-            # prepare data loader
-            self.eval_dataloader = self._prepare_data_loader(dataset, self.setting.eval_batch_size, rand_flag=False, collate_fn=self.custom_collate_fn_eval)
+        # prepare data loader
+        self.eval_dataloader = self._prepare_data_loader(dataset, self.setting.eval_batch_size, rand_flag=False, collate_fn=self.custom_collate_fn_eval)
 
-            # init result calculate class
-            self.prepare_result_class()
+        # init result calculate class
+        self.prepare_result_class()
 
-            # do base eval
-            self._base_eval(epoch, data_type, examples, features)
+        # do base eval
+        self._base_eval(epoch, data_type, examples, features)
 
-            # calculate result score
-            score = self.result.get_score()
-            self.logger.info(score)
+        # calculate result score
+        score = self.result.get_score()
+        self.logger.info(score)
 
-            # return bad case in train-mode
-            if self.setting.bad_case:
-                self.return_selected_case(type_='bad_case', items=self.result.bad_case, data_type=data_type, epoch=epoch)
+        # return bad case in train-mode
+        if self.setting.bad_case:
+            self.return_selected_case(type_='bad_case', items=self.result.bad_case, data_type=data_type, epoch=epoch)
 
-            # return all result
-            self.return_selected_case(type_='eval_prediction', items=self.result.all_result, data_type=data_type, epoch=epoch)
+        # return all result
+        self.return_selected_case(type_='eval_prediction', items=self.result.all_result, data_type=data_type, epoch=epoch)
+        
+        # save each epoch result
+        self.output_result['result'].append('data_type: {} - epoch: {} - train_loss: {} - epoch_score: {}'\
+                                            .format(data_type, epoch, self.train_loss, json.dumps(score, ensure_ascii=False)))
+
+        # save best model with specific standard(custom)
+        if data_type == 'dev' and score[self.setting.evaluation_metric] > self.best_dev_score:
+            self.best_dev_epoch = epoch
+            self.best_dev_score = score[self.setting.evaluation_metric]
+            self.logger.info('saving best dev model...')
+            self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}.e({}).b({}).p({}).s({})'.format(\
+                self.setting.task_name, data_type, 0, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','。'), self.setting.seed))
+
+        # if data_type == 'test' and score[self.setting.evaluation_metric] > self.best_test_score:
+        #     self.best_test_epoch = epoch
+        #     self.best_test_score = score[self.setting.evaluation_metric]
+        #     self.logger.info('saving best test model...')
+        #     self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}.e({}).b({}).p({}).s({})'.format(\
+        #         self.setting.task_name, data_type, 0, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','。'), self.setting.seed))
             
-            # save each epoch result
-            self.output_result['result'].append('data_type: {} - epoch: {} - train_loss: {} - epoch_score: {}'\
-                                                .format(data_type, epoch, self.train_loss, json.dumps(score, ensure_ascii=False)))
+        save_cpt_file = '{}.cpt.{}.e({}).b({}).p({}).s({})'.format(\
+                self.setting.task_name, epoch, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','。'), self.setting.seed)
+        if self.setting.save_cpt_flag == 1 and not os.path.exists(os.path.join(self.setting.model_dir, save_cpt_file)):
+            # save last epoch
+            last_epoch = self.get_latest_cpt_epoch()
+            if last_epoch != 0:
+                # delete lastest epoch model and store this epoch
+                delete_cpt_file = '{}.cpt.{}.e({}).b({}).p({}).s({})'.format(\
+                    self.setting.task_name, last_epoch, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','。'), self.setting.seed)
 
-            # save best model with specific standard(custom)
-            if data_type == 'dev' and score[self.setting.evaluation_metric] > self.best_dev_score:
-                self.best_dev_epoch = epoch
-                self.best_dev_score = score[self.setting.evaluation_metric]
-                self.logger.info('saving best dev model...')
-                self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}.e({}).b({}).p({}).s({})'.format(\
-                    self.setting.task_name, data_type, 0, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','。'), self.setting.seed))
+                if os.path.exists(os.path.join(self.setting.model_dir, delete_cpt_file)):
+                    os.remove(os.path.join(self.setting.model_dir, delete_cpt_file))
+                    self.logger.info('remove model {}'.format(delete_cpt_file))
+                else:
+                    self.logger.info("{} does not exist".format(delete_cpt_file), level=logging.WARNING)
 
-            if data_type == 'test' and score[self.setting.evaluation_metric] > self.best_test_score:
-                self.best_test_epoch = epoch
-                self.best_test_score = score[self.setting.evaluation_metric]
-                self.logger.info('saving best test model...')
-                self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}.e({}).b({}).p({}).s({})'.format(\
-                    self.setting.task_name, data_type, 0, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','。'), self.setting.seed))
-                
-            save_cpt_file = '{}.cpt.{}.e({}).b({}).p({}).s({})'.format(\
-                    self.setting.task_name, epoch, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','。'), self.setting.seed)
-            if self.setting.save_cpt_flag == 1 and not os.path.exists(os.path.join(self.setting.model_dir, save_cpt_file)):
-                # save last epoch
-                last_epoch = self.get_latest_cpt_epoch()
-                if last_epoch != 0:
-                    # delete lastest epoch model and store this epoch
-                    delete_cpt_file = '{}.cpt.{}.e({}).b({}).p({}).s({})'.format(\
-                        self.setting.task_name, last_epoch, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','。'), self.setting.seed)
+            self.logger.info('saving latest epoch model...')
+            self.save_checkpoint(cpt_file_name='{}.cpt.{}.e({}).b({}).p({}).s({})'.format(\
+                self.setting.task_name, epoch, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','。'), self.setting.seed))
 
-                    if os.path.exists(os.path.join(self.setting.model_dir, delete_cpt_file)):
-                        os.remove(os.path.join(self.setting.model_dir, delete_cpt_file))
-                        self.logger.info('remove model {}'.format(delete_cpt_file))
-                    else:
-                        self.logger.info("{} does not exist".format(delete_cpt_file), level=logging.WARNING)
-
-                self.logger.info('saving latest epoch model...')
-                self.save_checkpoint(cpt_file_name='{}.cpt.{}.e({}).b({}).p({}).s({})'.format(\
-                    self.setting.task_name, epoch, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','。'), self.setting.seed))
-
-            elif self.setting.save_cpt_flag == 2 and not os.path.exists(os.path.join(self.setting.model_dir, save_cpt_file)):
-                # save each epoch
-                self.logger.info('saving epoch {} model...'.format(epoch))
-                self.save_checkpoint(cpt_file_name='{}.cpt.{}.e({}).b({}).p({}).s({})'.format(\
-                    self.setting.task_name, epoch, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','。'), self.setting.seed))
+        elif self.setting.save_cpt_flag == 2 and not os.path.exists(os.path.join(self.setting.model_dir, save_cpt_file)):
+            # save each epoch
+            self.logger.info('saving epoch {} model...'.format(epoch))
+            self.save_checkpoint(cpt_file_name='{}.cpt.{}.e({}).b({}).p({}).s({})'.format(\
+                self.setting.task_name, epoch, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','。'), self.setting.seed))
 
 
     def custom_collate_fn_train(self, features: list) -> list:
@@ -359,7 +354,7 @@ class SequenceTaggingTask(BasePytorchTask):
         segment_ids = torch.stack([torch.tensor(feature.segment_ids, dtype=torch.long) for feature in features], 0)
         labels = torch.stack([torch.tensor(feature.label, dtype=torch.long) for feature in features], 0)
 
-        return [input_ids, input_masks, segment_ids, labels]
+        return [input_ids, input_masks, segment_ids, labels, features]
 
 
     def custom_collate_fn_eval(self, features: list) -> list:
@@ -422,7 +417,7 @@ class SequenceTaggingTask(BasePytorchTask):
 
         @batch: /
         """
-        input_ids, input_masks, segment_ids, labels = batch
+        input_ids, input_masks, segment_ids, labels, features = batch
         loss = self.model(input_ids=input_ids, token_type_ids=segment_ids, attention_mask=input_masks, labels=labels)
         return loss
 

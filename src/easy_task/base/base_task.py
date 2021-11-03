@@ -318,7 +318,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
             # do epoch eval
             self.eval(epoch_idx + 1)
             # do early stop
-            if self.setting.do_early_stop and self.early_stopping():
+            if hasattr(self.setting, 'do_early_stop') and self.setting.do_early_stop and self.early_stopping():
                 self.logger.info('='*20 + 'Early Stop Base Training' + '='*20)
                 break
 
@@ -486,7 +486,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         @header: pandas dump to file whether has columns.
         """
         # extract kwargs
-        file_type = kwargs.pop('file_type', 'excel')
+        file_type = kwargs.pop('file_type', 'csv')
         data_type = kwargs.pop('data_type', '')
         epoch = kwargs.pop('epoch', '')
         header = kwargs.pop('header', True)

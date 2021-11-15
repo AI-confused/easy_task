@@ -43,8 +43,8 @@ class SequenceTaggingTask(BasePytorchTask):
         # best score and output result(custom)
         self.best_dev_score = 0.0
         self.best_dev_epoch = 0
-        self.best_test_score = 0.0
-        self.best_test_epoch = 0
+        # self.best_test_score = 0.0
+        # self.best_test_epoch = 0
         self.output_result = {'result_type': '', 'task_config': self.setting.__dict__, 'result': []}
 
 
@@ -248,7 +248,8 @@ class SequenceTaggingTask(BasePytorchTask):
             # resume cpt if possible
             if resume_base_epoch > 0:
                 self.logger.info('Training starts from epoch {}'.format(resume_base_epoch))
-                self.resume_checkpoint(cpt_file_name='{}.cpt.{}'.format(self.setting.task_name, resume_base_epoch), resume_model=True, resume_optimizer=True)
+                self.resume_checkpoint(cpt_file_name='{}.cpt.{}.e({}).b({}).p({}).s({})'.format(\
+                    self.setting.task_name, resume_base_epoch, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','。'), self.setting.seed), resume_model=True, resume_optimizer=True)
             else:
                 self.logger.info('Training starts from scratch')
 
@@ -260,7 +261,7 @@ class SequenceTaggingTask(BasePytorchTask):
 
         # save best score
         self.output_result['result'].append('best_dev_epoch: {} - best_dev_score: {}'.format(self.best_dev_epoch, self.best_dev_score))
-        self.output_result['result'].append('best_test_epoch: {} - best_test_score: {}'.format(self.best_test_epoch, self.best_test_score))
+        # self.output_result['result'].append('best_test_epoch: {} - best_test_score: {}'.format(self.best_test_epoch, self.best_test_score))
 
         # write output results
         self.write_results()
@@ -410,7 +411,7 @@ class SequenceTaggingTask(BasePytorchTask):
         return logits, labels, features
 
 
-    def get_loss_on_batch(self, batch):
+    def get_loss_on_batch(self, batch: tuple):
         """Return batch loss during training model(custom).
 
         Can be overwriten, but with the same input parameters and output type.

@@ -330,7 +330,7 @@ class SequenceTaggingTask(BasePytorchTask):
                     os.remove(os.path.join(self.setting.model_dir, delete_cpt_file))
                     self.logger.info('remove model {}'.format(delete_cpt_file))
                 else:
-                    self.logger.info("{} does not exist".format(delete_cpt_file), level=logging.WARNING)
+                    self.logger.info("{} does not exist".format(delete_cpt_file))
 
             self.logger.info('saving latest epoch model...')
             self.save_checkpoint(cpt_file_name='{}.cpt.{}.e({}).b({}).p({}).s({})'.format(\

@@ -349,21 +349,25 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
             batch = self.__set_batch_to_device(batch)
 
             with torch.no_grad():
-                batch_eval_loss = self.get_loss_on_batch(batch)
+                if not self.setting.skip_train:
+                    batch_eval_loss = self.get_loss_on_batch(batch)
                 batch_results = self.get_result_on_batch(batch)
                 self.result.update_batch(batch_results=batch_results)
 
-            if self.n_gpu > 1:
-                # mean() to average on multi-gpu.
-                batch_eval_loss = batch_eval_loss.mean()  
-            if self.setting.gradient_accumulation_steps > 1:
-                batch_eval_loss = batch_eval_loss / self.setting.gradient_accumulation_steps
+            if not self.setting.skip_train:
+                if self.n_gpu > 1:
+                    # mean() to average on multi-gpu.
+                    batch_eval_loss = batch_eval_loss.mean()  
+                if self.setting.gradient_accumulation_steps > 1:
+                    batch_eval_loss = batch_eval_loss / self.setting.gradient_accumulation_steps
 
-            eval_loss += batch_eval_loss.item()
-            eval_steps += 1
-        # calculate epoch eval loss
-        self.eval_loss = eval_loss / eval_steps
-        self.logger.info("\tEpoch Eval Loss = {}".format(self.eval_loss))
+                eval_loss += batch_eval_loss.item()
+                eval_steps += 1
+                
+        if not self.setting.skip_train:
+            # calculate epoch eval loss
+            self.eval_loss = eval_loss / eval_steps
+            self.logger.info("\tEpoch Eval Loss = {}".format(self.eval_loss))
 
 
     def early_stopping(self):
@@ -442,7 +446,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         if os.path.exists(cpt_file_path):
             self.logger.info('Resume checkpoint from {}'.format(cpt_file_path))
         else:
-            self.logger.warning('Checkpoint {} does not exist'.format(cpt_file_path))
+            self.logger.info('Checkpoint {} does not exist'.format(cpt_file_path))
             raise Exception('Resume checkpoint failed')
 
         if torch.cuda.device_count() == 0:

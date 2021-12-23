@@ -35,7 +35,8 @@ class SequenceTaggingTask(BasePytorchTask):
         self._decorate_model()
 
         # prepare optim
-        self.prepare_optimizer()
+        if load_train:
+            self.prepare_optimizer()
 
         # load dataset
         self.load_data(load_train, load_dev, load_test)
@@ -43,8 +44,6 @@ class SequenceTaggingTask(BasePytorchTask):
         # best score and output result(custom)
         self.best_dev_score = 0.0
         self.best_dev_epoch = 0
-        # self.best_test_score = 0.0
-        # self.best_test_epoch = 0
         self.output_result = {'result_type': '', 'task_config': self.setting.__dict__, 'result': []}
 
 
@@ -308,13 +307,6 @@ class SequenceTaggingTask(BasePytorchTask):
             self.logger.info('saving best dev model...')
             self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}.e({}).b({}).p({}).s({})'.format(\
                 self.setting.task_name, data_type, 0, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','。'), self.setting.seed))
-
-        # if data_type == 'test' and score[self.setting.evaluation_metric] > self.best_test_score:
-        #     self.best_test_epoch = epoch
-        #     self.best_test_score = score[self.setting.evaluation_metric]
-        #     self.logger.info('saving best test model...')
-        #     self.save_checkpoint(cpt_file_name='{}.cpt.{}.{}.e({}).b({}).p({}).s({})'.format(\
-        #         self.setting.task_name, data_type, 0, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','。'), self.setting.seed))
             
         save_cpt_file = '{}.cpt.{}.e({}).b({}).p({}).s({})'.format(\
                 self.setting.task_name, epoch, self.setting.num_train_epochs, self.setting.train_batch_size, str(self.setting.percent).replace('.','。'), self.setting.seed)

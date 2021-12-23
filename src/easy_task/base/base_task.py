@@ -387,7 +387,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         return 0
 
 
-    def save_checkpoint(self, cpt_file_name: str=None, epoch: int=None):
+    def save_checkpoint(self, cpt_file_name: str=None, epoch: int=None, save_optimizer: bool=False):
         """Save save_checkpoint file to model path.
 
         @cpt_file_name: saved file name.
@@ -415,7 +415,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
             self.logger.info('No model state is dumped', level=logging.WARNING)
 
         # save optimizer parameters
-        if self.optimizer:
+        if save_optimizer:
             store_dict['optimizer_state'] = self.optimizer.state_dict()
         else:
             self.logger.info('No optimizer state is dumped', level=logging.WARNING)

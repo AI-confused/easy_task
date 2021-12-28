@@ -34,7 +34,7 @@ class ClassificationResult(BaseResult):
         return {'accuracy': acc, 'precision': prec, 'recall': rec, 'f1_score': f1_score, 'micro': micro_f1, 'macro': macro_f1}
         
 
-    def update_batch(self, batch_results: list):
+    def update_batch(self, batch_results: list, **kwargs):
         """Update batch result during model eval.
 
         @batch_results: [batch_outputs, batch_labels, batch_features]

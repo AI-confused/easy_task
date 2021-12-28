@@ -88,7 +88,7 @@ class SequenceTaggingResult(BaseResult):
         return res
         
         
-    def update_batch(self, batch_results: list):
+    def update_batch(self, batch_results: list, **kwargs):
         """Update batch data in custom task.
 
         @batch_results: [batch_logits, batch_labels, batch_features]

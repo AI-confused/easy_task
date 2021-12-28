@@ -13,10 +13,10 @@ class TaskSetting(object):
     @task_configuration: task configuration parameters.
     """
     def __init__(self, task_configuration: dict):
-        self.__update_by_dict(task_configuration)
-        self.__create_task_output_dir()
+        self.update_by_dict(task_configuration)
+        self.create_task_output_dir()
 
-    def __update_by_dict(self, config_dict: dict):
+    def update_by_dict(self, config_dict: dict):
         """Update class attributes by dict.
         
         @config_dict: configuration dictionary
@@ -25,7 +25,7 @@ class TaskSetting(object):
             setattr(self, key, val)
 
 
-    def __create_task_output_dir(self):
+    def create_task_output_dir(self):
         """Create task output path.
         """
         # create task dir

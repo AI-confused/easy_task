@@ -34,9 +34,9 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         self.setting = setting
                 
         # general initialization
-        self.__set_basic_log_config()
-        self.__check_setting_validity()
-        self.__init_device()
+        self.set_basic_log_config()
+        self.check_setting_validity()
+        self.init_device()
         self.reset_random_seed()
 
         # task-specific initialization
@@ -62,7 +62,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         self.early_stop_flag = 0
 
 
-    def __set_basic_log_config(self):
+    def set_basic_log_config(self):
         """Set basic logger configuration.
 
         Private class function.
@@ -91,7 +91,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         self.logger.addHandler(stream_handler)
 
 
-    def __check_setting_validity(self):
+    def check_setting_validity(self):
         """Check task setting parameters are valid or not.
 
         Private class function.
@@ -109,7 +109,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         self.setting.train_batch_size = int(self.setting.train_batch_size / self.setting.gradient_accumulation_steps)
     
         
-    def __init_device(self):
+    def init_device(self):
         """Init device.
 
         Private class function.
@@ -126,7 +126,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         self.logger.info("device {} / n_gpu {}".format(self.device, self.n_gpu))
 
 
-    def __set_batch_to_device(self, batch: list):
+    def set_batch_to_device(self, batch: list):
         """Put batch data into device.
 
         @batch: batch features on device
@@ -292,7 +292,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
 
             bar = tqdm.tqdm(self.train_dataloader)
             for step, batch in enumerate(bar):
-                batch = self.__set_batch_to_device(batch)
+                batch = self.set_batch_to_device(batch)
                 loss = self.get_loss_on_batch(batch)
 
                 if self.n_gpu > 1:
@@ -318,9 +318,9 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
             # do epoch eval
             self.eval(epoch_idx + 1)
             # do early stop
-            if hasattr(self.setting, 'do_early_stop') and self.setting.do_early_stop and self.early_stopping():
-                self.logger.info('='*20 + 'Early Stop Base Training' + '='*20)
-                break
+            # if hasattr(self.setting, 'do_early_stop') and self.setting.do_early_stop and self.early_stopping():
+            #     self.logger.info('='*20 + 'Early Stop Base Training' + '='*20)
+            #     break
 
 
     def _base_eval(self, epoch: int, data_type: str, eval_examples: list, eval_features: list, **kwargs):
@@ -346,45 +346,45 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         # do eval
         eval_steps, eval_loss = 0, 0.0
         for batch in tqdm.tqdm(self.eval_dataloader, desc='Iteration'):
-            batch = self.__set_batch_to_device(batch)
+            batch = self.set_batch_to_device(batch)
 
             with torch.no_grad():
-                if not self.setting.skip_train:
-                    batch_eval_loss = self.get_loss_on_batch(batch)
+                # if not self.setting.skip_train:
+                #     batch_eval_loss = self.get_loss_on_batch(batch)
                 batch_results = self.get_result_on_batch(batch)
-                self.result.update_batch(batch_results=batch_results)
+                self.result.update_batch(batch_results=batch_results, data_type=data_type)
 
-            if not self.setting.skip_train:
-                if self.n_gpu > 1:
-                    # mean() to average on multi-gpu.
-                    batch_eval_loss = batch_eval_loss.mean()  
-                if self.setting.gradient_accumulation_steps > 1:
-                    batch_eval_loss = batch_eval_loss / self.setting.gradient_accumulation_steps
+        #     if not self.setting.skip_train:
+        #         if self.n_gpu > 1:
+        #             # mean() to average on multi-gpu.
+        #             batch_eval_loss = batch_eval_loss.mean()  
+        #         if self.setting.gradient_accumulation_steps > 1:
+        #             batch_eval_loss = batch_eval_loss / self.setting.gradient_accumulation_steps
 
-                eval_loss += batch_eval_loss.item()
-                eval_steps += 1
+        #         eval_loss += batch_eval_loss.item()
+        #         eval_steps += 1
                 
-        if not self.setting.skip_train:
-            # calculate epoch eval loss
-            self.eval_loss = eval_loss / eval_steps
-            self.logger.info("\tEpoch Eval Loss = {}".format(self.eval_loss))
+        # if not self.setting.skip_train:
+        #     # calculate epoch eval loss
+        #     self.eval_loss = eval_loss / eval_steps
+        #     self.logger.info("\tEpoch Eval Loss = {}".format(self.eval_loss))
 
 
-    def early_stopping(self):
-        """Do early stop during epoch training.
-        """
-        if self.eval_loss < self.eval_best_loss:
-            self.early_stop_flag = 0
-            self.eval_best_loss = self.eval_loss
-        else:
-            self.early_stop_flag += 1
-            # stop training
-            if self.early_stop_flag == 2:
-                return 1
-            # update learning rate of parameters of model
-            for params in self.optimizer.param_groups:  
-                params['lr'] *= 0.5
-        return 0
+    # def early_stopping(self):
+    #     """Do early stop during epoch training.
+    #     """
+    #     if self.eval_loss < self.eval_best_loss:
+    #         self.early_stop_flag = 0
+    #         self.eval_best_loss = self.eval_loss
+    #     else:
+    #         self.early_stop_flag += 1
+    #         # stop training
+    #         if self.early_stop_flag == 2:
+    #             return 1
+    #         # update learning rate of parameters of model
+    #         for params in self.optimizer.param_groups:  
+    #             params['lr'] *= 0.5
+    #     return 0
 
 
     def save_checkpoint(self, cpt_file_name: str=None, epoch: int=None, save_optimizer: bool=False):
@@ -412,13 +412,13 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
                 model_state = self.model.state_dict()
             store_dict['model_state'] = model_state
         else:
-            self.logger.info('No model state is dumped', level=logging.WARNING)
+            self.logger.info('No model state is dumped')
 
         # save optimizer parameters
         if save_optimizer:
             store_dict['optimizer_state'] = self.optimizer.state_dict()
         else:
-            self.logger.info('No optimizer state is dumped', level=logging.WARNING)
+            self.logger.info('No optimizer state is dumped')
 
         if epoch:
             store_dict['epoch'] = epoch

@@ -1,25 +1,24 @@
 """
 -*- coding: utf-8 -*-
 @author: black_tears
-@time: 2021-07-09
+@time: 2021-09-23
 @description: custom task file.
 """
 
 
 import os
 import random
-from torch.jit import Error
+import logging
 import tqdm
 import torch
-import logging
 import pandas as pd
 from transformers import BertConfig, BertTokenizer
-from base.base_task import *
-from module.result_for_cls import *
-from module.model_for_cls import *
+from base_module.base_task import *
+from task_module.result_for_ner import *
+from task_module.model_for_ner import *
 
 
-class ClassificationTask(BasePytorchTask):
+class SequenceTaggingTask(BasePytorchTask):
     def __init__(self, task_setting: TaskSetting, load_train: bool=False, load_dev: bool=False, load_test: bool=False):
         """Custom Task definition class(custom).
 
@@ -28,7 +27,7 @@ class ClassificationTask(BasePytorchTask):
         @load_dev: load dev set.
         @load_test: load test set.
         """
-        super(ClassificationTask, self).__init__(task_setting)
+        super(SequenceTaggingTask, self).__init__(task_setting)
         self.logger.info('Initializing {}'.format(self.__class__.__name__))
 
         # prepare model
@@ -49,18 +48,18 @@ class ClassificationTask(BasePytorchTask):
 
 
     def prepare_task_model(self):
-        """Prepare classification task model(custom).
+        """Prepare ner task model(custom).
 
         Can be overwriten.
         """
         self.tokenizer = BERTChineseCharacterTokenizer.from_pretrained(self.setting.bert_model)
         self.bert_config = BertConfig.from_pretrained(self.setting.bert_model, num_labels=self.setting.num_label)
         self.setting.vocab_size = len(self.tokenizer.vocab)
-        self.model = BertForSequenceClassification.from_pretrained(self.setting.bert_model, config=self.bert_config)
+        self.model = BertForSequenceTagging.from_pretrained(self.setting.bert_model, config=self.bert_config)
 
 
     def prepare_optimizer(self):
-        """Prepare cls task optimizer(custom).
+        """Prepare ner task optimizer(custom).
 
         Can be overwriten.
         """
@@ -72,10 +71,10 @@ class ClassificationTask(BasePytorchTask):
 
         Can be overwriten.
         """
-        self.result = ClassificationResult(task_name=self.setting.task_name)
+        self.result = SequenceTaggingResult(task_name=self.setting.task_name, id2label=self.setting.id2label, max_seq_len=self.setting.max_seq_len)
 
 
-    def load_examples_features(self, data_type: str, file_name: str, **kwargs) -> tuple:
+    def load_examples_features(self, data_type: str, file_name: str) -> tuple:
         """Load examples, features and dataset(custom).
 
         Can be overwriten, but with the same input parameters and output type.
@@ -110,27 +109,22 @@ class ClassificationTask(BasePytorchTask):
         @percent: percent of reading samples
         """
         examples=[]
-        cnt = 10000
 
-        try:
-            data = json.load(open(input_file))['data']
-        except:
-            data = json.load(open(input_file))
+        data = pd.read_csv(input_file)
             
         if percent != 1.0:
-            data = random.sample(data, int(len(data)*percent))
-        for line in tqdm.tqdm(data, desc='read examples'):
-            text = line['text']
-            try:
-                # for data which has label
-                label = line['label']
+            data = data.sample(frac=percent, random_state=self.setting.seed)
+            data = data.reset_index(drop=True)
+
+        for i in tqdm.tqdm(data.index, desc='read examples'):
+            text = data.iloc[i]['text']
+            doc_id = data.iloc[i]['id']
+            try: 
+                label = json.loads(data.iloc[i]['label'])
             except:
-                # for data which don't have label
-                label = -1
-            doc_id = cnt
-            cnt += 1
+                label = None
             examples.append(InputExample(
-                doc_id=doc_id, 
+                doc_id=doc_id,
                 text=text,
                 label=label))
         return examples
@@ -149,41 +143,90 @@ class ClassificationTask(BasePytorchTask):
         for _ in tqdm.tqdm(range(len(examples)), total=len(examples), desc='convert features'):
             example = examples[_]
 
-            # tokenize
-            sentence_token = tokenizer.tokenize(example.text)[:max_seq_len-2]
-            sentence_len = len(sentence_token)
-            input_token = ['[CLS]'] + sentence_token + ['[SEP]']
-            segment_id = [0] * len(input_token)
-            input_id = tokenizer.convert_tokens_to_ids(input_token)
-            input_mask = [1] * len(input_id)
+            if example.label is not None:
+                # tag label
+                labels = sorted(example.label, key=lambda x: x[1])
+                sen_labels = []
+                last_point = 0
+                for _ in labels:
+                    if _[1] < last_point:
+                        continue
+                    sen_labels += [0]*(_[1]-last_point)
+                    sen_labels += [self.setting.label2id[_[0]]]
+                    sen_labels += [self.setting.label2id[_[0]] + (len(self.setting.label2id) - 1)] * (_[2] - _[1] - 1)
+                    last_point = _[2]
+                sen_labels += [0] * (len(example.text) - last_point)
+                assert len(example.text) == len(sen_labels)
 
-            # padding
-            padding_length = max_seq_len - len(input_id)
-            input_id += ([0] * padding_length)
-            input_mask += ([0] * padding_length)
-            segment_id += ([0] * padding_length)
+                # tokenize
+                sentence_token = tokenizer.tokenize(example.text)[:max_seq_len-2]
+                example.text = example.text[:max_seq_len-2]
+                sen_labels = sen_labels[:max_seq_len-2]
+                assert len(sentence_token) == len(sen_labels)
+                sentence_len = len(sentence_token)
+                input_token = ['[CLS]'] + sentence_token + ['[SEP]']
+                segment_id = [0] * len(input_token)
+                input_id = tokenizer.convert_tokens_to_ids(input_token)
+                input_mask = [1] * len(input_id)
 
-            features.append(
-                InputFeature(
-                    doc_id=example.doc_id,
-                    sentence=example.text,
-                    input_tokens=input_token,
-                    input_ids=input_id,
-                    input_masks=input_mask,
-                    segment_ids=segment_id,
-                    sentence_len=sentence_len,
-                    label=example.label,
-                    max_seq_len=max_seq_len,
+                # padding
+                padding_length = max_seq_len - len(input_id)
+                input_id += ([0] * padding_length)
+                input_mask += ([0] * padding_length)
+                segment_id += ([0] * padding_length)
+                BIO_label = [0] + sen_labels + [-1]*padding_length + [0]
+                assert len(BIO_label) == max_seq_len
+
+                features.append(
+                    InputFeature(
+                        doc_id=example.doc_id,
+                        sentence=example.text,
+                        entity_label=labels,
+                        input_tokens=input_token,
+                        input_ids=input_id,
+                        input_masks=input_mask,
+                        segment_ids=segment_id,
+                        sentence_len=sentence_len,
+                        label=BIO_label,
+                        max_seq_len=max_seq_len
+                    )
                 )
-            )
+            else:
+                # tokenize
+                sentence_token = tokenizer.tokenize(example.text)[:max_seq_len-2]
+                example.text = example.text[:max_seq_len-2]
+                sentence_len = len(sentence_token)
+                input_token = ['[CLS]'] + sentence_token + ['[SEP]']
+                segment_id = [0] * len(input_token)
+                input_id = tokenizer.convert_tokens_to_ids(input_token)
+                input_mask = [1] * len(input_id)
+
+                # padding
+                padding_length = max_seq_len - len(input_id)
+                input_id += ([0] * padding_length)
+                input_mask += ([0] * padding_length)
+                segment_id += ([0] * padding_length)
+
+                features.append(
+                    InputFeature(
+                        doc_id=example.doc_id,
+                        sentence=example.text,
+                        input_tokens=input_token,
+                        input_ids=input_id,
+                        input_masks=input_mask,
+                        segment_ids=segment_id,
+                        sentence_len=sentence_len,
+                        max_seq_len=max_seq_len
+                    )
+                )
+
         return features
 
 
-    def train(self, resume_base_epoch=None, resume_model_path=None):
+    def train(self, resume_base_epoch: int=None, resume_model_path: str=None):
         """Task level train func.
 
         @resume_base_epoch(int): start training epoch
-        @resume_model_path(str): other model to restart with
         """
         self.logger.info('=' * 20 + 'Start Training {}'.format(self.setting.task_name) + '=' * 20)
 
@@ -248,7 +291,10 @@ class ClassificationTask(BasePytorchTask):
 
         # return bad case in train-mode
         if self.setting.bad_case:
-            self.return_selected_case(type_='badcase', items=self.result.bad_case, data_type=data_type, epoch=epoch)
+            self.return_selected_case(type_='bad_case', items=self.result.bad_case, data_type=data_type, epoch=epoch)
+
+        # return all result
+        self.return_selected_case(type_='eval_prediction', items=self.result.all_result, data_type=data_type, epoch=epoch)
         
         # save each epoch result
         self.output_result['result'].append('data_type: {} - epoch: {} - train_loss: {} - epoch_score: {}'\
@@ -324,10 +370,10 @@ class ClassificationTask(BasePytorchTask):
 
         Can be overwriten, but with the same input parameters.
         
-        @resume_model_path: do test model name
+        @resume_model_path: do test model path
         """
         # extract kwargs
-        header = kwargs.pop("header", True)
+        header = kwargs.pop("header", None)
 
         self.resume_checkpoint(cpt_file_path=resume_model_path, resume_model=True, resume_optimizer=False)
 
@@ -341,8 +387,9 @@ class ClassificationTask(BasePytorchTask):
         self._base_eval(0, 'test', self.test_examples, self.test_features)
 
         # output test prediction
-        self.return_selected_case(type_='prediction', items=self.result.prediction, file_type='csv', data_type='test', header=header)
-
+        self.result.get_prediction()
+        self.return_selected_case(type_='test_prediction', items=self.result.all_result, header=header)
+    
 
     def get_result_on_batch(self, batch: tuple):
         """Return batch output logits during eval model(custom).
@@ -356,7 +403,7 @@ class ClassificationTask(BasePytorchTask):
         return logits, labels, features
 
 
-    def get_loss_on_batch(self, batch):
+    def get_loss_on_batch(self, batch: tuple):
         """Return batch loss during training model(custom).
 
         Can be overwriten, but with the same input parameters and output type.
@@ -366,4 +413,4 @@ class ClassificationTask(BasePytorchTask):
         input_ids, input_masks, segment_ids, labels, features = batch
         loss = self.model(input_ids=input_ids, token_type_ids=segment_ids, attention_mask=input_masks, labels=labels)
         return loss
-        
+

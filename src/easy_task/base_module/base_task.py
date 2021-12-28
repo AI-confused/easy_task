@@ -19,8 +19,8 @@ import torch
 import tqdm
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 import torch.nn.parallel as para
-from base.base_setting import *
-from base.base_utils import *
+from base_module.base_setting import *
+from base_module.base_utils import *
 
 
 class BasePytorchTask(metaclass=abc.ABCMeta):

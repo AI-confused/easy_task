@@ -11,8 +11,8 @@ import sys
 cur_dir = os.path.abspath(__file__)
 sys.path.append(os.path.join('/'.join(cur_dir.split('/')[:-2]), 'src/'))
 ############################################################################################
-from easy_task.base import TaskSetting, BaseUtils
-from easy_task.module import SequenceTaggingTask
+from easy_task.base_module import TaskSetting, BaseUtils
+from easy_task.task_module import SequenceTaggingTask
 
 
 if __name__ == '__main__':    

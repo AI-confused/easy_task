@@ -7,8 +7,8 @@
 
 import torch.nn as nn
 from collections import defaultdict
-from base.base_utils import *
-from base.base_result import *
+from base_module.base_utils import *
+from base_module.base_result import *
 
 
 class SequenceTaggingResult(BaseResult):

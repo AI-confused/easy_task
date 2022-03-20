@@ -167,7 +167,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         for fn in os.listdir(self.setting.model_dir):
             if fn.startswith('{}.cpt'.format(self.setting.task_name)):
                 try:
-                    epoch = int(fn.split('.')[-5])
+                    epoch = int(fn.split('.')[-1])
                     if epoch > 0:
                         prev_epochs.append(epoch)
                 except Exception as e:
@@ -344,7 +344,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         self.model.eval()
 
         # do eval
-        eval_steps, eval_loss = 0, 0.0
+#         eval_steps, eval_loss = 0, 0.0
         for batch in tqdm.tqdm(self.eval_dataloader, desc='Iteration'):
             batch = self.set_batch_to_device(batch)
 

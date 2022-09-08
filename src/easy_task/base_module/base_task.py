@@ -145,6 +145,9 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         """Put model on device.
         """
         self.logger.info('='*20 + 'Decorate Model' + '='*20)
+
+        self.model.to(self.device)
+        self.logger.info('Set model device to {}'.format(str(self.device)))
         
         if self.n_gpu > 1:
             self.model = torch.nn.DataParallel(self.model)
@@ -153,35 +156,32 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
             self.logger.info('Single-gpu task')
         else:
             self.logger.info('no cuda task')
+
         
-        self.model.to(self.device)
-        self.logger.info('Set model device to {}'.format(str(self.device)))
-
-
     def get_latest_cpt_epoch(self) -> int:
         """Get the latest training epoch model from the saved model directory.
         """
-        prev_epochs = []
+        prev_checkpoints = []
 
         # find checkpoints and sort them by epoch
         for fn in os.listdir(self.setting.model_dir):
             if fn.startswith('{}.cpt'.format(self.setting.task_name)):
                 try:
-                    epoch = int(fn.split('.')[-1])
-                    if epoch > 0:
-                        prev_epochs.append(epoch)
+                    checkpoint = int(fn.split('.')[-5][10:])
+                    if checkpoint > 0:
+                        prev_checkpoints.append(checkpoint)
                 except Exception as e:
                     continue
-        prev_epochs.sort()
+        prev_checkpoints.sort()
 
-        if len(prev_epochs) > 0:
-            latest_epoch = prev_epochs[-1]
-            self.logger.info('Pick latest epoch {} from {}'.format(latest_epoch, str(prev_epochs)))
+        if len(prev_checkpoints) > 0:
+            last_checkpoint = prev_checkpoints[-1]
+            self.logger.info('Pick latest checkpoints {} from {}'.format(last_checkpoint, str(prev_checkpoints)))
         else:
-            latest_epoch = 0
-            self.logger.info('No previous epoch checkpoints, just start from scratch')
+            last_checkpoint = 0
+            self.logger.info('No previous checkpoints, just start from scratch')
 
-        return latest_epoch
+        return last_checkpoint
         
 
     def reset_random_seed(self, seed: int=None):
@@ -273,7 +273,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         """
         assert self.model is not None
         if self.num_train_steps is None:
-            self.num_train_steps = self.setting.num_train_epochs * len(self.train_features) // self.setting.train_batch_size
+            self.num_train_steps = int(len(self.train_features) / self.setting.train_batch_size / self.setting.gradient_accumulation_steps * self.setting.num_train_epochs)
 
         self.logger.info('='*20 + 'Start Base Training' + '='*20)
         self.logger.info("\tTotal examples Num = {}".format(len(self.train_examples)))
@@ -311,31 +311,46 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
                 nb_tr_examples += self.setting.train_batch_size
                 nb_tr_steps += 1
 
+                # 对抗训练
+                if self.adverse_attack != None:
+                    self.adverse_attack.attack() # 在embedding上添加对抗扰动
+                    loss_adv = self.get_loss_on_batch(batch)
+                    if self.n_gpu > 1:
+                        loss_adv = loss_adv.mean()
+                    if self.setting.gradient_accumulation_steps > 1:
+                        loss_adv = loss_adv / self.setting.gradient_accumulation_steps
+                    # 反向传播，并在正常的grad基础上，累加对抗训练的梯度
+                    loss_adv.backward() 
+                    # 恢复embedding参数
+                    self.adverse_attack.restore() 
+
+                # 参数更新
                 if (step + 1) % self.setting.gradient_accumulation_steps == 0:
                     self.optimizer.step()
+                    if hasattr(self.setting, 'scheduler') and self.setting.scheduler != None:
+                        self.scheduler.step()
                     self.model.zero_grad()
                     global_step += 1
-            # do epoch eval
-            self.eval(epoch_idx + 1)
-            # do early stop
-            # if hasattr(self.setting, 'do_early_stop') and self.setting.do_early_stop and self.early_stopping():
-            #     self.logger.info('='*20 + 'Early Stop Base Training' + '='*20)
-            #     break
+
+                    if global_step>1 and global_step % int(len(self.train_dataloader)//self.setting.gradient_accumulation_steps*self.setting.eval_portion) == 0:
+                        # do epoch eval
+                        self.eval(global_step)
+
+                        self.model.train()
 
 
-    def _base_eval(self, epoch: int, data_type: str, eval_examples: list, eval_features: list, **kwargs):
+    def _base_eval(self, global_step: int, data_type: str, eval_examples: list, eval_features: list, **kwargs):
         """Base task eval func with a set of parameters.
 
         This class should not be rewritten.
 
-        @epoch: eval epoch
+        @global_step: global_step
         @data_type: 'dev' or 'test'
         @eval_examples: list of InputExample
         @eval_features: list of InputFeature
         """
         assert self.model is not None
         self.logger.info('=' * 20 + 'Start Evaluation/{}'.format(data_type) + '=' * 20)
-        self.logger.info('\tPROGRESS: {}'.format(epoch / self.setting.num_train_epochs))
         self.logger.info("\tNum examples = {}".format(len(eval_examples)))
         self.logger.info("\tNum features = {}".format(len(eval_features)))
         self.logger.info("\tBatch size = {}".format(self.setting.eval_batch_size))
@@ -344,47 +359,12 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         self.model.eval()
 
         # do eval
-#         eval_steps, eval_loss = 0, 0.0
         for batch in tqdm.tqdm(self.eval_dataloader, desc='Iteration'):
             batch = self.set_batch_to_device(batch)
 
             with torch.no_grad():
-                # if not self.setting.skip_train:
-                #     batch_eval_loss = self.get_loss_on_batch(batch)
                 batch_results = self.get_result_on_batch(batch)
                 self.result.update_batch(batch_results=batch_results, data_type=data_type)
-
-        #     if not self.setting.skip_train:
-        #         if self.n_gpu > 1:
-        #             # mean() to average on multi-gpu.
-        #             batch_eval_loss = batch_eval_loss.mean()  
-        #         if self.setting.gradient_accumulation_steps > 1:
-        #             batch_eval_loss = batch_eval_loss / self.setting.gradient_accumulation_steps
-
-        #         eval_loss += batch_eval_loss.item()
-        #         eval_steps += 1
-                
-        # if not self.setting.skip_train:
-        #     # calculate epoch eval loss
-        #     self.eval_loss = eval_loss / eval_steps
-        #     self.logger.info("\tEpoch Eval Loss = {}".format(self.eval_loss))
-
-
-    # def early_stopping(self):
-    #     """Do early stop during epoch training.
-    #     """
-    #     if self.eval_loss < self.eval_best_loss:
-    #         self.early_stop_flag = 0
-    #         self.eval_best_loss = self.eval_loss
-    #     else:
-    #         self.early_stop_flag += 1
-    #         # stop training
-    #         if self.early_stop_flag == 2:
-    #             return 1
-    #         # update learning rate of parameters of model
-    #         for params in self.optimizer.param_groups:  
-    #             params['lr'] *= 0.5
-    #     return 0
 
 
     def save_checkpoint(self, cpt_file_name: str=None, epoch: int=None, save_optimizer: bool=False):

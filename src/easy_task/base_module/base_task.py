@@ -286,7 +286,7 @@ class BasePytorchTask(metaclass=abc.ABCMeta):
         self.train_loss = 0
 
         for epoch_idx in tqdm.trange(kwargs['base_epoch_idx'], int(self.setting.num_train_epochs), desc="Epoch"):
-            self.model.train()
+            # self.model.train()
             tr_loss = 0
             nb_tr_examples, nb_tr_steps = 0, 0
 
